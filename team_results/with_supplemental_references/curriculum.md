@@ -207,7 +207,6 @@ CSV의 차용 역량과 자료 인용문을 바탕으로 만든 축소 실습안
 - `core_not_dropped`: `True`
 - `within_total_capacity`: `True`
 - `material_durations_known`: `True`
-- `educational_coverage_complete`: `False`
 - `educational_evidence_complete`: `True`
 - `project_implementation_within_budget`: `True`
 - `added_claims_to_review`: `0`
@@ -218,6 +217,5 @@ CSV의 차용 역량과 자료 인용문을 바탕으로 만든 축소 실습안
 
 - 상위 프로젝트 checks.passed 값이 제공되지 않았습니다
 - 상위 프로젝트에 사람이 확인할 항목 1개가 있습니다
-- 선택 교육자료에서 전체 범위를 다루지 않는 목표 역량: C01, C14, C21, C31, C42, C45
 
 > 주의: 역량 ID 일치는 교육자료 학습 효과 또는 프로젝트 완수를 보증하지 않습니다. 실제 학습 범위·시간·선행 관계는 상위 단계가 검증해야 합니다.

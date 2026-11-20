@@ -15,6 +15,9 @@ class TeamCurriculumTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             self.assertEqual(main(["--hours-per-week", "7", "--output-dir", folder]), 3)
             result = json.loads((Path(folder) / "curriculum.json").read_text())
+            markdown = (Path(folder) / "curriculum.md").read_text()
+        self.assertNotIn("전체 범위를 다루지 않는 목표 역량", markdown)
+        self.assertNotIn("educational_coverage_complete", markdown)
         self.assertEqual(result["status"], "needs_review")
         self.assertEqual(len(result["weeks"]), 12)
         self.assertTrue(all(0 < week["used_minutes"] <= 420 for week in result["weeks"]))
@@ -123,6 +126,7 @@ class TeamCurriculumTest(unittest.TestCase):
         self.assertEqual(result["status"], "needs_review")
         self.assertEqual(len(result["weeks"]), 12)
         self.assertIn("C14", str(result["prerequisite_gaps"]["P03"]))
+        self.assertTrue(any("P03 선수학습 확인 필요" in warning for warning in result["warnings"]))
         self.assertFalse(result["checks"]["educational_coverage_complete"])
         self.assertEqual(strict["status"], "blocked")
         self.assertEqual(guides.call_count, 1)

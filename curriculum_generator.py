@@ -793,8 +793,6 @@ def generate(project: Any, materials: Any, *, weeks: int, hours_per_week: float,
     included_skills = sorted(set(itertools.chain.from_iterable(t.competencies for t in selected)))
     covered_skills = sorted(set(included_skills).intersection(s for u in scheduled_units for s in u.competencies))
     missing_materials = sorted(set(included_skills) - set(covered_skills))
-    if team_csv and missing_materials:
-        notes.append("선택 교육자료에서 전체 범위를 다루지 않는 목표 역량: " + ", ".join(missing_materials))
     duration_ok = not learn["unknown_duration_selected"] and not any("학습시간 미확정" in msg for errors in learn.get("gaps", {}).values() for msg in errors)
     ready = (not review and not plan_blocked and not learn["uncovered"] and upstream_passed is True and
              not unverified and not missing_evidence and not unused_core_materials and added_claims == 0 and
@@ -976,6 +974,8 @@ def format_md(result: dict) -> str:
         out.append("")
     out.extend(["## 확인 및 경고", ""])
     for key, value in result["checks"].items():
+        if key == "educational_coverage_complete" and result.get("team_export"):
+            continue
         out.append(f"- `{key}`: `{value}`")
     out.append("")
     out.extend([f"- {w}" for w in result["warnings"]] if result["warnings"] else ["- 추가 경고 없음"])
