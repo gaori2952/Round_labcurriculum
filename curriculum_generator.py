@@ -21,6 +21,7 @@ from typing import Any
 
 
 SLOT_MINUTES = 10
+SIZE_HOURS = {"소형": 4, "중형": 7, "대형": 18}
 
 
 class InputError(ValueError):
@@ -879,6 +880,7 @@ def format_md(result: dict) -> str:
     project, sumry, constraints = result["project"], result["summary"], result["constraints"]
     analysis_provenance = result.get("analysis_provenance", {})
     team = result.get("team_export")
+    size_label = f" | **규모:** {constraints['size']}" if "size" in constraints else ""
     all_gaps = result["prerequisite_gaps"]
     missing_suffix = ": 제공하는 자료가 없습니다"
     optional_topics = {}
@@ -888,7 +890,7 @@ def format_md(result: dict) -> str:
             for task_id, errors in all_gaps.items()
         }
     out = [f"# {project['title']} — 주차별 커리큘럼", "",
-           f"**상태:** `{result['status']}` | **기간:** {constraints['weeks']}주 × {constraints['hours_per_week']}시간/주", "",
+           f"**상태:** `{result['status']}` | **기간:** {constraints['weeks']}주 × {constraints['hours_per_week']}시간/주{size_label}", "",
            f"**목표:** {project.get('goal') or '목표 문단 미제공'}", "",
            "## 생성 흐름", "",
            result["policy"]["source"] + " → 작업·역량 확인 → 핵심/참고 교육자료 매칭 → 학습·작업 순서 정렬 → 주차 배분 → 검증", "",
@@ -1041,7 +1043,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--project", help="상위 단계의 *.adapt.json")
     p.add_argument("--materials", help="핵심·참고 교육자료 JSON")
     p.add_argument("--weeks", type=int, default=12, help="총 주차 수")
-    p.add_argument("--hours-per-week", type=float, required=True, help="주당 학습·구현 가용시간 (시간)")
+    capacity = p.add_mutually_exclusive_group(required=True)
+    capacity.add_argument("--size", choices=SIZE_HOURS, help="주당 가용시간 · 소형 4시간, 중형 7시간, 대형 18시간")
+    capacity.add_argument("--hours-per-week", type=float, help="주당 학습·구현 가용시간 (시간)")
     p.add_argument("--include-reference", action="append", default=[], metavar="ID",
                    help="남는 시간에 배정할 보조 교육자료 ID. 여러 번 지정 가능")
     p.add_argument("--output-dir", default="outputs", help="저장 폴더")
@@ -1053,7 +1057,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--region", help="Bedrock 호출 리전")
     a = p.parse_args(argv)
     try:
-        hours = a.hours_per_week
+        hours = SIZE_HOURS[a.size] if a.size else a.hours_per_week
         if a.project or a.materials:
             if a.team_folder or not (a.project and a.materials):
                 p.error("--project와 --materials를 함께 사용하거나 팀 폴더를 지정하세요")
@@ -1065,6 +1069,8 @@ def main(argv: list[str] | None = None) -> int:
         result = generate(project, materials, weeks=a.weeks, hours_per_week=hours, strict=a.strict,
                           analysis=read_json(a.analysis) if a.analysis else None, model=a.bedrock_model,
                           profile=a.profile, region=a.region, include_references=a.include_reference)
+        if a.size:
+            result["constraints"]["size"] = a.size
         if team is not None:
             result["team_export"] = team
             result["policy"]["source"] = "선정 프로젝트 CSV + 선정 교육자료 CSV"

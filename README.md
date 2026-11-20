@@ -7,7 +7,7 @@
 Python 3.10 이상에서 저장소 루트의 다음 명령을 실행한다.
 
 ```sh
-python3 curriculum_generator.py --hours-per-week 7 --output-dir result
+python3 curriculum_generator.py --size 중형 --output-dir result
 ```
 
 기본 입력은 `data/aws_fde/`에 있는 [선정 프로젝트 CSV](data/aws_fde/프로젝트_뽑힌프로젝트.csv)와 [선정 교육자료 CSV](data/aws_fde/교육자료_고른자료.csv)다. 다른 폴더에 있는 원본을 읽으려면 `--team-folder "폴더 경로"`를 추가한다.
@@ -16,6 +16,16 @@ python3 curriculum_generator.py --hours-per-week 7 --output-dir result
 |---|---|
 | `result/curriculum.md` | 주차별 학습·구현, 시간, 산출물, 완료 기준과 출처 |
 | `result/curriculum.json` | 활동 ID, 선수 관계, 미충족 역량과 검증 결과 |
+
+### 주당 시간 선택
+
+| 규모 | 주당 가용시간 | 12주 가용시간 |
+|---|---:|---:|
+| 소형 | 4시간 | 48시간 |
+| 중형 | 7시간 | 84시간 |
+| 대형 | 18시간 | 216시간 |
+
+한 번 실행할 때 `--size 소형`, `--size 중형`, `--size 대형` 중 하나를 지정한다. 주당 시간을 직접 입력하려면 `--hours-per-week`를 사용한다. 핵심 작업과 학습이 예산을 넘으면 부족한 시간과 주당 필요한 최소 시간을 결과에 적는다.
 
 ### 주 7시간 결과 예시
 

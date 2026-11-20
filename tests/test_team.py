@@ -147,3 +147,14 @@ class TeamCurriculumTest(unittest.TestCase):
         self.assertNotIn("## 추가 학습 참고", strict_markdown)
         self.assertNotIn("학습 경로를 확보하지 못한 항목", markdown)
         self.assertNotIn("선수학습 확인 필요:", markdown)
+
+    def test_user_selects_one_weekly_size(self):
+        for size, hours in (("소형", 4), ("중형", 7), ("대형", 18)):
+            with self.subTest(size=size), tempfile.TemporaryDirectory() as folder:
+                self.assertEqual(main(["--size", size, "--output-dir", folder]), 3)
+                result = json.loads((Path(folder) / "curriculum.json").read_text())
+                self.assertEqual(result["constraints"]["size"], size)
+                self.assertEqual(result["constraints"]["hours_per_week"], hours)
+                self.assertEqual(result["constraints"]["capacity_hours"], hours * 12)
+                self.assertEqual(len(result["weeks"]), 12)
+                self.assertTrue(all(w["used_minutes"] <= hours * 60 for w in result["weeks"]))
