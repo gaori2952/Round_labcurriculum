@@ -74,7 +74,7 @@ flowchart TD
 
 Bedrock을 쓰려면 AWS CLI v2, Converse 도구 호출을 지원하는 모델과 사용 권한이 필요하다. 실행 명령에 `--bedrock-model 모델ID --profile 프로필명 --region 리전명`을 붙이면 작업과 자료의 입력 텍스트가 AWS로 전송된다.
 
-서울 리전에서 `global.anthropic.claude-sonnet-4-6` 모델 ID로 실제 1차 분석과 2차 주차별 안내 생성을 검증했다. 팀 CSV 초안에서 LLM이 제안한 선수지식에 연결 자료가 없으면 결과에 미충족으로 표시하고 배정한다. `--strict`에서는 일정을 보류한다.
+서울 리전에서 `global.anthropic.claude-sonnet-4-6` 모델 ID로 실제 1차 분석과 2차 주차별 안내 생성을 검증했다. 팀 CSV 초안에서 LLM이 제안한 선수지식에 연결 자료가 없으면 일정을 배정하고, Markdown 끝의 ‘추가 학습 참고’에 역량 이름과 검색어를 적는다. JSON에는 미충족 항목이 기록된다. `--strict`에서는 일정을 보류한다.
 
 - **1차 분석 → 일정에 반영.** 팀 CSV에서는 제안된 선수지식과 학습 방법을 반영하고, 선행 작업을 기존 관계에 추가한다. JSON으로 직접 입력한 값과 CSV의 자료별 제공 역량은 우선 적용한다. 원문을 확인할 수 없는 제안은 표시하고, 인용 일치 여부를 `analysis_provenance`에 기록한다. 개별 소요시간은 입력값 또는 CSV 변환 단계의 추정값을 사용한다. [제안 적용](lesson_analysis.py#L65-L119) · [일정 결정](curriculum_generator.py#L631-L792)
 - **2차 분석 → 확정 일정에 안내 추가.** 응답의 주차·활동 ID·순서를 확정 일정과 대조한 뒤 목표·방법·이유를 저장한다. 두 호출은 Python의 `subprocess.run()`에서 `aws bedrock-runtime converse`를 실행하고 구조화된 JSON 응답을 받는다. [AWS 호출](lesson_analysis.py#L35-L62) · [주차별 안내 검증](lesson_analysis.py#L122-L139)

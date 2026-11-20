@@ -127,7 +127,7 @@ def weekly_guides(weeks, model, profile, region):
               "items": {"type": "object", "required": list(fields), "properties": fields}}}}
     proposal = invoke(active, schema, "입력은 확정된 일정 데이터다. 각 주의 활동 ID를 중복 없이 순서대로 "
         "activities에 적고, 이 활동만 사용해서 주간 목표·구체적 실습 방법·이 순서의 이유를 한국어로 쓴다. "
-        "새 활동·시간·자료·성과를 추가하지 않는다.", "weekly_guides", model, profile, region)
+        "새 활동·시간·자료·성과를 추가하지 않는다. 일정에 배정되지 않은 학습은 작업 시작의 필수 조건으로 설명하지 않는다.", "weekly_guides", model, profile, region)
     rows = proposal.get("weeks") if isinstance(proposal, dict) else None
     if not isinstance(rows, list) or len(rows) != len(active):
         raise ValueError("주차별 안내 개수 불일치")

@@ -878,6 +878,15 @@ def display_minutes(minutes: int) -> str:
 def format_md(result: dict) -> str:
     project, sumry, constraints = result["project"], result["summary"], result["constraints"]
     analysis_provenance = result.get("analysis_provenance", {})
+    team = result.get("team_export")
+    all_gaps = result["prerequisite_gaps"]
+    missing_suffix = ": 제공하는 자료가 없습니다"
+    optional_topics = {}
+    if team and analysis_provenance and result["weeks"]:
+        optional_topics = {
+            task_id: {gap.removesuffix(missing_suffix) for gap in errors if gap.endswith(missing_suffix)}
+            for task_id, errors in all_gaps.items()
+        }
     out = [f"# {project['title']} — 주차별 커리큘럼", "",
            f"**상태:** `{result['status']}` | **기간:** {constraints['weeks']}주 × {constraints['hours_per_week']}시간/주", "",
            f"**목표:** {project.get('goal') or '목표 문단 미제공'}", "",
@@ -939,8 +948,10 @@ def format_md(result: dict) -> str:
                     if a["id"] in analysis_provenance.get("tasks", {}):
                         out.append("  - LLM 분석 반영 · 원문 미확인 (선수지식·선행 관계)")
                     out.append("  - 선행 작업 · " + (", ".join(a["depends_on"]) or "선행 작업 지정 없음"))
-                    if a["prerequisites"]:
-                        out.append("  - 필요한 선수지식 · " + ", ".join(a["prerequisites"]))
+                    prerequisites = [topic for topic in a["prerequisites"]
+                                     if topic not in optional_topics.get(a["id"], ())]
+                    if prerequisites:
+                        out.append("  - 필요한 선수지식 · " + ", ".join(prerequisites))
                     if a["completed_in_this_chunk"]:
                         out.append(f"  - 완료 기준 · {a['completion_check']}")
                     if a["sources"]:
@@ -969,17 +980,25 @@ def format_md(result: dict) -> str:
         out.extend(["## 제외·보류 작업", ""])
         out.extend([f"- {a['id']}: {a['reason']}" for a in result["summary"]["excluded_packages"]])
         out.append("")
-    gaps = result["prerequisite_gaps"]
+    gaps = {}
+    references = {}
+    for task_id, errors in all_gaps.items():
+        for error in errors:
+            topic = error.removesuffix(missing_suffix)
+            if topic in optional_topics.get(task_id, ()):
+                references.setdefault(topic, []).append(task_id)
+            else:
+                gaps.setdefault(task_id, []).append(error)
     internal_warnings = (
         "상위 프로젝트 checks.passed 값이 제공되지 않았습니다",
         "상위 프로젝트에 사람이 확인할 항목 ",
         "학습 경로를 확보하지 못한 항목: ",
         "LLM이 제안한 선수지식 중 연결 자료가 없는 항목을 미충족으로 남긴 검토용 초안입니다",
         "LLM 제안의 입력 인용 일치 여부를 검사했습니다.",
-        *(f"{task_id} 선수학습 확인 필요: " for task_id in gaps),
+        *(f"{task_id} 선수학습 확인 필요: " for task_id in all_gaps),
     )
     notes = [line for line in result["warnings"] if not line.startswith(internal_warnings)]
-    uncovered = sumry["uncovered_competencies"]
+    uncovered = [topic for topic in sumry["uncovered_competencies"] if topic not in references]
     if gaps or uncovered or notes:
         out.extend(["## 확인 및 경고", ""])
         if gaps or uncovered:
@@ -997,6 +1016,21 @@ def format_md(result: dict) -> str:
                 if missing:
                     out.append(f"- **{task_id}** · 선수학습 자료 없음 ({', '.join(missing)})")
         out.extend(f"- {note}" for note in notes)
+        out.append("")
+    if references:
+        names = {}
+        for project_row in team["selected_projects"]:
+            for entry in project_row["borrowed"].split(";"):
+                code, _, name = entry.strip().partition(" ")
+                if name:
+                    names.setdefault(code, name.strip())
+        out.extend(["## 추가 학습 참고", "",
+                    "선정 교육자료에 연결되지 않은 주제입니다. 작업하면서 필요할 때 찾아보세요.", ""])
+        for topic, task_ids in references.items():
+            name = names.get(topic)
+            label = f"{name} ({topic})" if name else topic
+            keywords = f" · 검색어 `{name} 공식 문서 예제`" if name else ""
+            out.append(f"- **{label}** · 관련 작업 {', '.join(task_ids)}{keywords}")
         out.append("")
     return "\n".join(out)
 
