@@ -30,6 +30,8 @@ python3 curriculum_generator.py --hours-per-week 7 \
 
 기본 작업과 선수학습을 배정한 뒤 남은 시간 안에서 요청 순서대로 추가한다. 관련 작업이 있으면 그 작업 완료 이후, 연결된 작업이 없으면 프로젝트 작업을 마친 뒤 배치한다. 이미 배정된 자료는 중복 배정하지 않는다. 시간 또는 선수지식이 부족하면 결과의 ‘요청한 보조자료’에 사유를 적는다. 여러 보조자료에 선수 관계가 있으면 선수 자료를 먼저 요청한다.
 
+[주 7시간으로 보조자료 두 개를 포함한 실행 결과](team_results/with_supplemental_references/curriculum.md)와 [JSON 결과](team_results/with_supplemental_references/curriculum.json)를 확인할 수 있다.
+
 
 ## 가상 예제로 동작 확인
 
