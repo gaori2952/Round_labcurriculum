@@ -1,5 +1,6 @@
 import copy
 import json
+from pathlib import Path
 import subprocess
 import unittest
 from unittest.mock import patch
@@ -31,8 +32,13 @@ class AnalysisTests(unittest.TestCase):
             generate(self.p,M,weeks=12,hours_per_week=7,analysis=self.proposal)
 
     def test_converse_input_and_weekly_guides(self):
-        def fake_cli(cmd, *, input, **kwargs):
-            req = json.loads(input)
+        def fake_cli(cmd, **kwargs):
+            arg = cmd[cmd.index('--cli-input-json') + 1]
+            self.assertTrue(arg.startswith('file://'))
+            request_path = Path(arg.removeprefix('file://'))
+            self.assertTrue(request_path.is_file())
+            self.assertNotEqual(request_path, Path('/dev/stdin'))
+            req = json.loads(request_path.read_text(encoding='utf-8'))
             tool = req['toolConfig']['toolChoice']['tool']['name']
             if tool == 'lesson_plan':
                 result = self.proposal

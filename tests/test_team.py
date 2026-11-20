@@ -105,3 +105,24 @@ class TeamCurriculumTest(unittest.TestCase):
         result = generate(project, materials, hours_per_week=7, **options)
         self.assertEqual(result["supplemental_references"][0]["status"], "skipped")
         self.assertIn("선수", result["supplemental_references"][0]["reason"])
+
+    def test_team_llm_draft_discloses_missing_prerequisite_material(self):
+        project, materials, _ = prepare_team(DATA)
+
+        def proposal(tasks, units, *args):
+            return {
+                "tasks": [{"id": t.id, "quote": "", "requires": list(t.requires) + (["C14"] if t.id == "P03" else []),
+                           "depends_on": [], "completion_check": t.completion_check} for t in tasks],
+                "units": [{"id": u.id, "quote": "", "teaches": list(u.competencies),
+                           "requires": [], "study_method": "프로젝트와 비교"} for u in units],
+            }
+
+        with patch("lesson_analysis.propose", side_effect=proposal), patch("lesson_analysis.weekly_guides") as guides:
+            result = generate(project, materials, weeks=12, hours_per_week=7, model="test-model")
+            strict = generate(project, materials, weeks=12, hours_per_week=7, model="test-model", strict=True)
+        self.assertEqual(result["status"], "needs_review")
+        self.assertEqual(len(result["weeks"]), 12)
+        self.assertIn("C14", str(result["prerequisite_gaps"]["P03"]))
+        self.assertFalse(result["checks"]["educational_coverage_complete"])
+        self.assertEqual(strict["status"], "blocked")
+        self.assertEqual(guides.call_count, 1)

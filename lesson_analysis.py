@@ -1,7 +1,9 @@
 """Optional, evidence-linked prerequisite suggestions via AWS CLI / Bedrock Converse."""
 from dataclasses import asdict, replace
 import json
+from pathlib import Path
 import subprocess
+from tempfile import TemporaryDirectory
 
 ARRAY = {"type": "array", "items": {"type": "string"}}
 TEXT = {"type": "string", "minLength": 1}
@@ -37,15 +39,17 @@ def invoke(records, schema, instruction, tool, model, profile, region):
         "toolConfig": {"tools": [{"toolSpec": {"name": tool, "description": "교육과정 구조화",
                         "inputSchema": {"json": schema}}}], "toolChoice": {"tool": {"name": tool}}},
         "inferenceConfig": {"temperature": 0, "maxTokens": 8192}}
-    cmd = ["aws", "bedrock-runtime", "converse", "--cli-input-json", "file:///dev/stdin",
-           "--output", "json", "--no-cli-pager"]
+    cmd = ["aws", "bedrock-runtime", "converse", "--output", "json", "--no-cli-pager"]
     if profile:
         cmd.extend(["--profile", profile])
     if region:
         cmd.extend(["--region", region])
     try:
-        run = subprocess.run(cmd, input=json.dumps(request, ensure_ascii=False), text=True,
-                             capture_output=True, timeout=180, check=True)
+        with TemporaryDirectory(prefix="roundlab-bedrock-") as temporary:
+            request_path = Path(temporary) / "request.json"
+            request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
+            run = subprocess.run([*cmd, "--cli-input-json", f"file://{request_path}"],
+                                 text=True, encoding="utf-8", capture_output=True, timeout=180, check=True)
         data = json.loads(run.stdout)
         calls = [b["toolUse"]["input"] for b in data["output"]["message"]["content"]
                  if b.get("toolUse", {}).get("name") == tool]

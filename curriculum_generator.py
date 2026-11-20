@@ -394,6 +394,7 @@ def prerequisite_plan(tasks, units, known):
             return min(alternatives, key=lambda a: a[:3])[3], None
         return [], f"{topic}: " + (" / ".join(dict.fromkeys(errors)) or "제공하는 자료가 없습니다")
 
+    missing_sources = {}
     needed = set()
     missing = set()
     for task in tasks:
@@ -405,11 +406,13 @@ def prerequisite_plan(tasks, units, known):
             if error:
                 gaps.setdefault(task.id, []).append(error)
                 missing.add(topic)
+                if topic not in providers:
+                    missing_sources.setdefault(task.id, []).append(topic)
             for unit in steps:
                 acquired.update(unit.competencies)
                 chosen.append(unit)
                 before[task.id].append(unit.id)
-    return {"units": chosen, "before": before, "gaps": gaps, "needed": sorted(needed),
+    return {"units": chosen, "before": before, "gaps": gaps, "missing_sources": missing_sources, "needed": sorted(needed),
             "uncovered": sorted(missing), "unknown_duration_selected": [], "unknown_duration_candidates": [],
             "education_minutes": sum(u.minutes for u in chosen), "selection_method": "prerequisites"}
 
@@ -669,19 +672,26 @@ def generate(project: Any, materials: Any, *, weeks: int, hours_per_week: float,
                 learn = fallback
         return selected, learn, implementation + learn["education_minutes"]
 
+    def has_blocking_gaps(plan):
+        gaps = plan.get("gaps", {})
+        if not (team_csv and analysis is not None and not strict):
+            return bool(gaps)
+        missing_sources = plan.get("missing_sources", {})
+        return any(len(errors) != len(missing_sources.get(task_id, ())) for task_id, errors in gaps.items())
+
     selected, learn, total = evaluate(required)
     omitted: list[dict] = []
     core_over_budget = total > capacity
     core_project_budget_exceeded = (project_budget_m is not None and
                                     minutes_sum(selected) > project_budget_m)
-    if not (core_over_budget or core_project_budget_exceeded or learn.get("gaps")) and not learn["unknown_duration_selected"]:
+    if not (core_over_budget or core_project_budget_exceeded or has_blocking_gaps(learn)) and not learn["unknown_duration_selected"]:
         # Extension tasks are optional. Include each task and its prerequisites only if feasible.
         for t in ordered:
             if t.id in required:
                 continue
             candidate = dependency_closure(required | {t.id}, by_id)
             new_tasks, new_learn, new_total = evaluate(candidate)
-            if new_learn.get("gaps"):
+            if has_blocking_gaps(new_learn):
                 omitted.append({"id": t.id, "reason": "확장 작업 선수학습 미충족", "gaps": new_learn["gaps"]})
             elif new_learn["unknown_duration_selected"]:
                 omitted.append({"id": t.id, "reason": "필요한 학습자료 시간 미확정"})
@@ -737,6 +747,8 @@ def generate(project: Any, materials: Any, *, weeks: int, hours_per_week: float,
         notes.append("시간 또는 선수조건을 충족하는 대체 학습 경로를 선택했습니다")
     if added_claims:
         notes.append(f"선택 작업의 added 항목 {added_claims}개는 검증된 근거로 간주하지 않습니다")
+    if learn.get("gaps") and not has_blocking_gaps(learn):
+        notes.append("LLM이 제안한 선수지식 중 연결 자료가 없는 항목을 미충족으로 남긴 검토용 초안입니다")
     for tid, errors in learn.get("gaps", {}).items():
         notes.append(f"{tid} 선수학습 확인 필요: " + "; ".join(errors))
     review = [f"{t.id} 작업 출처 또는 완료 기준 미제공" for t in selected if not any((isinstance(src, str) and src.strip()) or (isinstance(src, dict) and (src.get("url") or src.get("quote"))) for src in t.sources) or not t.completion_check]
@@ -751,7 +763,7 @@ def generate(project: Any, materials: Any, *, weeks: int, hours_per_week: float,
     if analysis is not None:
         review.append("LLM 제안의 입력 인용 일치 여부를 검사했습니다. 제안의 의미와 교육 적합성은 검토가 필요합니다")
     notes.extend(review)
-    plan_blocked = bool(learn.get("gaps")) or core_over_budget or core_project_budget_exceeded or bool(learn["unknown_duration_selected"])
+    plan_blocked = has_blocking_gaps(learn) or core_over_budget or core_project_budget_exceeded or bool(learn["unknown_duration_selected"])
     if core_project_budget_exceeded:
         notes.append(f"핵심 작업 구현시간 {as_hours(minutes_sum(selected))}h이 프로젝트 예산 {project_budget}h 초과")
     if core_over_budget:
