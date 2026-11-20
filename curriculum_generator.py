@@ -481,8 +481,78 @@ def as_hours(minutes: int) -> float:
     return round(minutes / 60, 4)
 
 
+def supplemental_plan(requested, units, selected, learn, known, budget, blocked, strict):
+    by_material = {}
+    for unit in units:
+        if unit.role == "reference":
+            by_material.setdefault(unit.material_id, []).append(unit)
+
+    first_task = {topic: index for index in reversed(range(len(selected)))
+                  for topic in selected[index].competencies}
+    index_by_task = {task.id: index for index, task in enumerate(selected)}
+    before = learn.get("before")
+    placement = {}
+    for unit in learn["units"]:
+        if before is not None:
+            placement[unit.id] = next(index_by_task[tid] for tid, ids in before.items() if unit.id in ids)
+        else:
+            placement[unit.id] = min(first_task[s] for s in unit.competencies if s in first_task)
+
+    after, decisions = {}, []
+    scheduled = {unit.id: unit for unit in learn["units"]}
+    for material_id in dict.fromkeys(requested):
+        candidates = by_material.get(material_id)
+        if not candidates:
+            fail(f"참고 교육자료 ID를 찾을 수 없습니다: {material_id}")
+        row = {"material_id": material_id, "title": candidates[0].title, "status": "skipped"}
+        decisions.append(row)
+        pending = [unit for unit in candidates if unit.id not in scheduled]
+        if blocked:
+            row["reason"] = "기본 일정 배정 보류"
+        elif not pending:
+            row.update(status="already_scheduled", reason="기본 일정에 이미 배정됨")
+        elif any(unit.minutes is None for unit in pending):
+            row["reason"] = "학습시간 미확정"
+        elif strict and any(not unit.url or not unit.evidence or unit.evidence.strip() in
+                            {"근거 확인 필요", "미정", "TBD"} for unit in pending):
+            row["reason"] = "엄격 모드: 학습 근거 미확인"
+        elif (cost := sum(unit.minutes for unit in pending)) > budget:
+            row["reason"] = "남은 시간 부족"
+        else:
+            topics = {topic.removeprefix("입문-") for unit in pending for topic in unit.competencies}
+            related = [i for i, task in enumerate(selected) if topics.intersection(
+                topic.removeprefix("입문-") for topic in (*task.competencies, *(task.requires or ())))]
+
+            for index in range(related[-1] if related else len(selected) - 1, len(selected)):
+                available = set(known).union(*(unit.competencies for uid, unit in scheduled.items()
+                                               if placement[uid] <= index))
+                ordered, remaining = [], pending.copy()
+                while remaining:
+                    eligible = next((unit for unit in remaining if set(unit.requires) <= available), None)
+                    if eligible is None:
+                        break
+                    remaining.remove(eligible)
+                    ordered.append(eligible)
+                    available.update(eligible.competencies)
+                if not remaining:
+                    task_id = selected[index].id
+                    reason = f"{task_id} 작업 완료 후 보완학습" if related else "프로젝트 작업 완료 후 별도 보완학습"
+                    related_task = selected[related[-1]].id if related else None
+                    after.setdefault(task_id, []).extend((unit, reason, related_task) for unit in ordered)
+                    for unit in ordered:
+                        scheduled[unit.id] = unit
+                        placement[unit.id] = index
+                    budget -= cost
+                    row.update(status="included", minutes=cost, after_task_id=task_id,
+                               reason=reason)
+                    break
+            else:
+                row["reason"] = "선수지식을 충족할 수 없음"
+    return after, decisions
+
+
 def build_schedule(selected: list[Task], units: list[LearningUnit], weeks: int,
-                   per_week: int, total_minutes: int, before=None) -> list[dict]:
+                   per_week: int, total_minutes: int, before=None, after=None) -> list[dict]:
     weekly_slots, extra_weeks = divmod(total_minutes // SLOT_MINUTES, weeks)
     week_rows = [{"week": n, "capacity_minutes": per_week, "used_minutes": 0,
                   "activities": [], "deliverables_completed": []} for n in range(1, weeks + 1)]
@@ -513,25 +583,34 @@ def build_schedule(selected: list[Task], units: list[LearningUnit], weeks: int,
             wk["activities"].append(activity)
             wk["used_minutes"] += step
 
+    def place_learning(u, task, supplemental_reason=None, related_task=None):
+        if u.minutes is None:
+            raise AssertionError("시간 미확정 자료는 일정 배정 불가")
+        details = {
+            "material_id": u.material_id, "role": u.role, "url": u.url,
+            "competencies": list(u.competencies), "evidence": u.evidence,
+            "section": u.section, "for_task": task.id, "requires": list(u.requires),
+            "reason": f"{task.id} 작업 전 선수학습", "study_method": u.method or
+            f"{u.title}의 개념을 정리하고 예제를 실행한 뒤 {task.do}에 적용합니다."}
+        if supplemental_reason:
+            details.update(learning_purpose="supplemental", reason=supplemental_reason, for_task=related_task,
+                           study_method=u.method or f"{u.title}의 관련 구간을 공부하고 예제 결과를 기록합니다.")
+        place("learning", u.title, u.id, u.minutes, details)
+
     unit_by_id = {u.id: u for u in units}
     for t in selected:
         ordered_units = ([unit_by_id[uid] for uid in before[t.id]] if before is not None else units)
         for u in ordered_units:
             if u.id not in placed_units and (before is not None or set(u.competencies).intersection(t.competencies)):
-                if u.minutes is None:
-                    raise AssertionError("시간 미확정 자료는 일정 배정 불가")
-                place("learning", u.title, u.id, u.minutes, {
-                    "material_id": u.material_id, "role": u.role, "url": u.url,
-                    "competencies": list(u.competencies), "evidence": u.evidence,
-                    "section": u.section, "for_task": t.id, "requires": list(u.requires),
-                    "reason": f"{t.id} 작업 전 선수학습", "study_method": u.method or
-                    f"{u.title}의 개념을 정리하고 예제를 실행한 뒤 {t.do}에 적용합니다."})
+                place_learning(u, t)
                 placed_units.add(u.id)
         place("project", t.do, t.id, t.minutes, {
             "out": t.out, "core": t.core, "competencies": list(t.competencies),
             "completion_check": t.completion_check or f"{t.out} 산출물 확인 (상세 검증 기준 미제공)",
             "prerequisites": list(t.requires if t.requires is not None else t.competencies),
             "depends_on": list(t.depends_on), "sources": list(t.sources), "added": list(t.added)})
+        for u, reason, related_task in (after or {}).get(t.id, ()):
+            place_learning(u, t, supplemental_reason=reason, related_task=related_task)
     if set(u.id for u in units) != placed_units:
         raise AssertionError("선택된 학습자료가 어떤 작업에도 연결되지 않았습니다")
     for wk in week_rows:
@@ -547,7 +626,8 @@ def build_schedule(selected: list[Task], units: list[LearningUnit], weeks: int,
 
 
 def generate(project: Any, materials: Any, *, weeks: int, hours_per_week: float,
-             strict: bool = False, analysis=None, model=None, profile=None, region=None) -> dict:
+             strict: bool = False, analysis=None, model=None, profile=None, region=None,
+             include_references=()) -> dict:
     if not isinstance(weeks, int) or isinstance(weeks, bool) or weeks <= 0:
         fail("weeks: 양의 정수여야 합니다")
     per_week = to_minutes(hours_per_week, "hours_per_week", 60, ceiling=True)
@@ -683,9 +763,23 @@ def generate(project: Any, materials: Any, *, weeks: int, hours_per_week: float,
         plan_blocked = True
         notes.append("엄격 모드: 상위 검증·미확인 항목·학습 커버리지 문제로 일정 생성을 보류합니다")
 
-    output_weeks = [] if plan_blocked else build_schedule(selected, learn["units"], weeks, per_week, total, learn.get("before"))
+    after, supplements = {}, []
+    if include_references:
+        after, supplements = supplemental_plan(include_references, units, selected, learn, known,
+                                               capacity - total, plan_blocked, strict)
+    extra_units = [u for t in selected for u, _, _ in after.get(t.id, ())]
+    extra_minutes = sum(u.minutes for u in extra_units)
+    total += extra_minutes
+    scheduled_units = learn["units"] + extra_units
+    extra_missing_evidence = [u.id for u in extra_units if not u.url or not u.evidence or
+                              u.evidence.strip() in {"근거 확인 필요", "미정", "TBD"}]
+    if extra_missing_evidence:
+        notes.append("보완학습의 근거 확인 필요: " + ", ".join(extra_missing_evidence))
+    missing_evidence.extend(extra_missing_evidence)
+    output_weeks = [] if plan_blocked else build_schedule(
+        selected, learn["units"], weeks, per_week, total, learn.get("before"), after)
     included_skills = sorted(set(itertools.chain.from_iterable(t.competencies for t in selected)))
-    covered_skills = sorted(set(included_skills).intersection(s for u in learn["units"] for s in u.competencies))
+    covered_skills = sorted(set(included_skills).intersection(s for u in scheduled_units for s in u.competencies))
     missing_materials = sorted(set(included_skills) - set(covered_skills))
     if team_csv and missing_materials:
         notes.append("선택 교육자료에서 전체 범위를 다루지 않는 목표 역량: " + ", ".join(missing_materials))
@@ -715,17 +809,17 @@ def generate(project: Any, materials: Any, *, weeks: int, hours_per_week: float,
                     "core_packages": [t.id for t in selected if t.core],
                     "promoted_dependencies": promoted,
                     "excluded_packages": omitted,
-                    "selected_learning_units": [u.id for u in learn["units"]],
-                    "selected_material_ids": list(dict.fromkeys(u.material_id for u in learn["units"])),
+                    "selected_learning_units": [u.id for u in scheduled_units],
+                    "selected_material_ids": list(dict.fromkeys(u.material_id for u in scheduled_units)),
                     "implementation_hours": as_hours(minutes_sum(selected)),
-                    "learning_hours": as_hours(learn["education_minutes"]),
+                    "learning_hours": as_hours(learn["education_minutes"] + extra_minutes),
                     "scheduled_hours": as_hours(total) if not plan_blocked else None,
                     "remaining_hours": as_hours(capacity - total) if not plan_blocked else None,
                     "uncovered_competencies": learn["uncovered"]},
         "learning_matches": [{"unit_id": u.id, "material_id": u.material_id, "role": u.role,
                               "title": u.title, "url": u.url, "section": u.section,
                               "competencies": list(u.competencies), "duration_minutes": u.minutes,
-                              "evidence": u.evidence} for u in learn["units"]],
+                              "evidence": u.evidence} for u in scheduled_units],
         "competency_coverage": {"target": included_skills, "covered_by_materials": covered_skills,
                                 "missing_materials": missing_materials},
         "weeks": output_weeks, "learner_known": list(known),
@@ -745,6 +839,8 @@ def generate(project: Any, materials: Any, *, weeks: int, hours_per_week: float,
         "upstream_review": {"unverified": unverified, "decisions": raw.get("decisions", []),
                             "checks": upstream_checks},
     }
+    if supplements:
+        result["supplemental_references"] = supplements
     result["task_preparation"] = [{
         "task_id": t.id, "required": list(t.requires if t.requires is not None else t.competencies),
         "already_known": sorted(set(known).intersection(t.requires if t.requires is not None else t.competencies)),
@@ -817,7 +913,8 @@ def format_md(result: dict) -> str:
                 out.extend(["배정된 학습·작업 없음 (임의로 시간을 채우지 않음)", ""])
             for a in w["activities"]:
                 if a["kind"] == "learning":
-                    out.append(f"- **학습** ({display_minutes(a['minutes'])}): [{a['title']}]({a['url']}) — 역량 {', '.join(a['competencies']) or '미지정'}")
+                    label = "보완학습" if a.get("learning_purpose") == "supplemental" else "학습"
+                    out.append(f"- **{label}** ({display_minutes(a['minutes'])}): [{a['title']}]({a['url']}) — 역량 {', '.join(a['competencies']) or '미지정'}")
                     if a["section"]:
                         out.append("  - 학습 구간 · " + a["section"])
                     unit_proposal = analysis_provenance.get("units", {}).get(a["id"])
@@ -855,6 +952,12 @@ def format_md(result: dict) -> str:
             out.append(f"| [{title}]({a['url']}) | {a['role']} | {', '.join(a['competencies'])} | "
                        f"{display_minutes(a['duration_minutes']) if a['duration_minutes'] is not None else '미확정'} | {evidence} |")
         out.append("")
+    if result.get("supplemental_references"):
+        out.extend(["## 요청한 보조자료", ""])
+        for item in result["supplemental_references"]:
+            duration = f" · {display_minutes(item['minutes'])}" if "minutes" in item else ""
+            out.append(f"- {item['title']} ({item['material_id']}) · {item['reason']}{duration}")
+        out.append("")
     if result["summary"]["excluded_packages"]:
         out.extend(["## 제외·보류 작업", ""])
         out.extend([f"- {a['id']}: {a['reason']}" for a in result["summary"]["excluded_packages"]])
@@ -875,6 +978,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--materials", help="핵심·참고 교육자료 JSON")
     p.add_argument("--weeks", type=int, default=12, help="총 주차 수")
     p.add_argument("--hours-per-week", type=float, required=True, help="주당 학습·구현 가용시간 (시간)")
+    p.add_argument("--include-reference", action="append", default=[], metavar="ID",
+                   help="남는 시간에 배정할 보조 교육자료 ID. 여러 번 지정 가능")
     p.add_argument("--output-dir", default="outputs", help="저장 폴더")
     p.add_argument("--strict", action="store_true", help="상위 검증/학습 근거 미충족 시 일정 생성 보류")
     reasoning = p.add_mutually_exclusive_group()
@@ -895,7 +1000,7 @@ def main(argv: list[str] | None = None) -> int:
             project, materials, team = prepare_team(a.team_folder or Path(__file__).parent / "data/aws_fde")
         result = generate(project, materials, weeks=a.weeks, hours_per_week=hours, strict=a.strict,
                           analysis=read_json(a.analysis) if a.analysis else None, model=a.bedrock_model,
-                          profile=a.profile, region=a.region)
+                          profile=a.profile, region=a.region, include_references=a.include_reference)
         if team is not None:
             result["team_export"] = team
             result["policy"]["source"] = "선정 프로젝트 CSV + 선정 교육자료 CSV"

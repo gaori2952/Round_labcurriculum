@@ -77,3 +77,31 @@ class TeamCurriculumTest(unittest.TestCase):
         self.assertIn("LLM 생성 제안 · 원문 미확인", format_md(result))
         self.assertIn("두 리전 구성의 차이를 살펴보기", format_md(result))
         self.assertNotIn("입력에서 확인되지 않는 문장", format_md(result))
+
+    def test_requested_reference_adds_followup_without_replacing_prerequisites(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.assertEqual(main(["--hours-per-week", "7", "--include-reference", "E564ad08f67",
+                                   "--include-reference", "E2a4fa23ce7", "--output-dir", folder]), 3)
+            result = json.loads((Path(folder) / "curriculum.json").read_text())
+        self.assertEqual(result["summary"]["scheduled_hours"], 80.5)
+        self.assertEqual(result["summary"]["remaining_hours"], 3.5)
+        activities = [a for w in result["weeks"] for a in w["activities"]]
+        self.assertTrue(all(w["used_minutes"] <= 420 for w in result["weeks"]))
+        self.assertLess(max(a["sequence"] for a in activities if a["id"] == "P05"),
+                        min(a["sequence"] for a in activities if a["id"] == "E564ad08f67"))
+        self.assertTrue(all(a["learning_purpose"] == "supplemental" for a in activities
+                            if a["id"] in {"E564ad08f67", "E2a4fa23ce7"}))
+        self.assertIn("E365c3dd16b", result["summary"]["selected_material_ids"])
+        self.assertEqual(activities[-1]["id"], "E2a4fa23ce7")
+
+    def test_requested_reference_respects_remaining_budget_and_prerequisites(self):
+        project, materials, _ = prepare_team(DATA)
+        options = {"weeks": 12, "include_references": ["E564ad08f67"]}
+        result = generate(project, materials, hours_per_week=6.5, **options)
+        self.assertEqual(result["supplemental_references"][0]["status"], "skipped")
+        self.assertIn("시간", result["supplemental_references"][0]["reason"])
+        reference = next(u for u in materials["materials"] if u["id"] == "E564ad08f67")
+        reference["requires"] = ["C999"]
+        result = generate(project, materials, hours_per_week=7, **options)
+        self.assertEqual(result["supplemental_references"][0]["status"], "skipped")
+        self.assertIn("선수", result["supplemental_references"][0]["reason"])
