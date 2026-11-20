@@ -168,22 +168,3 @@ adapt.json packages[] + selected materials → 작업·역량 확인 → 핵심/
 | [RAG 튜토리얼 — 검색 결과와 응답 연결](https://example.org/learn/rag) | core | C45 | 2시간 | 예시 목차 4~5장 |
 | [응답 평가 가이드](https://example.org/learn/eval) | reference | C46 | 3시간 | 예시 학습목표: 품질 평가 |
 | [배포 튜토리얼](https://example.org/learn/deploy) | reference | C39 | 3시간 | 예시 학습목표: 배포 자동화 |
-
-## 확인 및 경고
-
-- `scheduled`: `True`
-- `core_not_dropped`: `True`
-- `within_total_capacity`: `True`
-- `material_durations_known`: `True`
-- `educational_coverage_complete`: `True`
-- `educational_evidence_complete`: `True`
-- `project_implementation_within_budget`: `True`
-- `added_claims_to_review`: `0`
-- `unmatched_core_material_ids`: `[]`
-- `upstream_project_passed`: `True`
-- `all_week_caps_ok`: `True`
-- `unverified_count`: `0`
-
-- 추가 경고 없음
-
-> 주의: 역량 ID 일치는 교육자료 학습 효과 또는 프로젝트 완수를 보증하지 않습니다. 실제 학습 범위·시간·선행 관계는 상위 단계가 검증해야 합니다.

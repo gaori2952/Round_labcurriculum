@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from curriculum_generator import generate, main
+from curriculum_generator import format_md, generate, main
 from team_csv import prepare_team, read_rows
 
 DATA = Path(__file__).resolve().parents[1] / "data/aws_fde"
@@ -18,6 +18,11 @@ class TeamCurriculumTest(unittest.TestCase):
             markdown = (Path(folder) / "curriculum.md").read_text()
         self.assertNotIn("전체 범위를 다루지 않는 목표 역량", markdown)
         self.assertNotIn("educational_coverage_complete", markdown)
+        self.assertNotIn("checks.passed", markdown)
+        self.assertNotIn("upstream_project_passed", markdown)
+        self.assertNotIn("## 확인 및 경고", markdown)
+        self.assertNotIn("> 주의:", markdown)
+        self.assertTrue(any("checks.passed" in warning for warning in result["warnings"]))
         self.assertEqual(result["status"], "needs_review")
         self.assertEqual(len(result["weeks"]), 12)
         self.assertTrue(all(0 < week["used_minutes"] <= 420 for week in result["weeks"]))
@@ -58,7 +63,6 @@ class TeamCurriculumTest(unittest.TestCase):
 
     def test_unconfirmed_llm_guidance_stays_in_generated_draft(self):
         project, materials, _ = prepare_team(DATA)
-        from curriculum_generator import format_md
 
         def proposal(tasks, units, *args):
             return {
@@ -130,3 +134,8 @@ class TeamCurriculumTest(unittest.TestCase):
         self.assertFalse(result["checks"]["educational_coverage_complete"])
         self.assertEqual(strict["status"], "blocked")
         self.assertEqual(guides.call_count, 1)
+        _, _, result["team_export"] = prepare_team(DATA)
+        markdown = format_md(result)
+        self.assertIn("**P03** · 선수학습 자료 없음 (C14)", markdown)
+        self.assertNotIn("학습 경로를 확보하지 못한 항목", markdown)
+        self.assertNotIn("선수학습 확인 필요:", markdown)

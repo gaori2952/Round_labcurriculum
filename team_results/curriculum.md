@@ -187,22 +187,3 @@ CSV의 차용 역량과 자료 인용문을 바탕으로 만든 축소 실습안
 | [Recommended Technologies](https://github.com/microsoft/code-with-engineering-playbook/blob/main/docs/UI-UX/recommended-technologies.md) | reference | C51, C52 | 1시간 | C51: React - Quick note on create-react-app - Documentation & Using older React coding patterns - Best Practices to Organize; C52: TypeScript - Guidance on types and interfaces |
 | [Evaluate your ADK agent using Vertex AI Gen AI Evaluation service](https://github.com/GoogleCloudPlatform/generative-ai/blob/main/gemini/evaluation/evaluating_adk_agent.ipynb) | core | 입문-C21, C43, 입문-C44 | 2시간 | C21: Agent Development Kit (ADK in short) is a flexible and modular open source framework for developing and deploying AI agents.; C43: using Vertex AI Gen AI Evaluation provides a toolkit of quality controlled and explainable methods and metrics to evaluate any generat; C44: Agent Development Kit (ADK in short) is a flexible and modular open source framework for developing and deploying AI agents. |
 | [Module: Build a Multi-Region Serverless Application for Resilience and High Availability](https://github.com/aws-samples/aws-serverless-workshops/tree/master/MultiRegion) | reference | C57, 입문-C58 | 3시간 | C57: you will use Amazon API Gateway, AWS Lambda, Amazon DynamoDB and a variety of other AWS services; C58: build a Multi-Region Serverless Application for Resilience and High Availability |
-
-## 확인 및 경고
-
-- `scheduled`: `True`
-- `core_not_dropped`: `True`
-- `within_total_capacity`: `True`
-- `material_durations_known`: `True`
-- `educational_evidence_complete`: `True`
-- `project_implementation_within_budget`: `True`
-- `added_claims_to_review`: `0`
-- `unmatched_core_material_ids`: `[]`
-- `upstream_project_passed`: `None`
-- `all_week_caps_ok`: `True`
-- `unverified_count`: `1`
-
-- 상위 프로젝트 checks.passed 값이 제공되지 않았습니다
-- 상위 프로젝트에 사람이 확인할 항목 1개가 있습니다
-
-> 주의: 역량 ID 일치는 교육자료 학습 효과 또는 프로젝트 완수를 보증하지 않습니다. 실제 학습 범위·시간·선행 관계는 상위 단계가 검증해야 합니다.

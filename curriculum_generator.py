@@ -899,9 +899,6 @@ def format_md(result: dict) -> str:
         out.append("")
     if result.get("learner_known"):
         out.extend(["시작 전 보유 지식 · " + ", ".join(result["learner_known"]), ""])
-    if sumry["uncovered_competencies"]:
-        out.append("**교육자료 연결이 필요한 역량:** " + ", ".join(sumry["uncovered_competencies"]))
-        out.append("")
     if result["status"] == "blocked":
         out.extend(["> 일정 생성이 보류되었습니다. 아래 경고와 입력을 수정한 뒤 다시 실행하세요.", ""])
     else:
@@ -972,14 +969,35 @@ def format_md(result: dict) -> str:
         out.extend(["## 제외·보류 작업", ""])
         out.extend([f"- {a['id']}: {a['reason']}" for a in result["summary"]["excluded_packages"]])
         out.append("")
-    out.extend(["## 확인 및 경고", ""])
-    for key, value in result["checks"].items():
-        if key == "educational_coverage_complete" and result.get("team_export"):
-            continue
-        out.append(f"- `{key}`: `{value}`")
-    out.append("")
-    out.extend([f"- {w}" for w in result["warnings"]] if result["warnings"] else ["- 추가 경고 없음"])
-    out.extend(["", "> 주의: 역량 ID 일치는 교육자료 학습 효과 또는 프로젝트 완수를 보증하지 않습니다. 실제 학습 범위·시간·선행 관계는 상위 단계가 검증해야 합니다.", ""])
+    gaps = result["prerequisite_gaps"]
+    internal_warnings = (
+        "상위 프로젝트 checks.passed 값이 제공되지 않았습니다",
+        "상위 프로젝트에 사람이 확인할 항목 ",
+        "학습 경로를 확보하지 못한 항목: ",
+        "LLM이 제안한 선수지식 중 연결 자료가 없는 항목을 미충족으로 남긴 검토용 초안입니다",
+        "LLM 제안의 입력 인용 일치 여부를 검사했습니다.",
+        *(f"{task_id} 선수학습 확인 필요: " for task_id in gaps),
+    )
+    notes = [line for line in result["warnings"] if not line.startswith(internal_warnings)]
+    uncovered = sumry["uncovered_competencies"]
+    if gaps or uncovered or notes:
+        out.extend(["## 확인 및 경고", ""])
+        if gaps or uncovered:
+            out.extend(["> **주의 · 작업 전 선수학습을 확인하세요.**", ""])
+            if not gaps:
+                out.append("- 학습자료 연결이 필요한 역량 · " + ", ".join(uncovered))
+            for task_id, errors in gaps.items():
+                missing = []
+                for error in errors:
+                    topic, _, reason = error.partition(": ")
+                    if reason == "제공하는 자료가 없습니다":
+                        missing.append(topic)
+                    else:
+                        out.append(f"- **{task_id}** · {error}")
+                if missing:
+                    out.append(f"- **{task_id}** · 선수학습 자료 없음 ({', '.join(missing)})")
+        out.extend(f"- {note}" for note in notes)
+        out.append("")
     return "\n".join(out)
 
 
