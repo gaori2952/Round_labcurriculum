@@ -21,7 +21,7 @@ from typing import Any
 
 
 SLOT_MINUTES = 10
-SIZE_HOURS = {"소형": 4, "중형": 14, "대형": 30}
+SIZE_HOURS = {"소형": 7, "중형": 14, "대형": 30}
 
 
 class InputError(ValueError):
@@ -1044,7 +1044,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--materials", help="핵심·참고 교육자료 JSON")
     p.add_argument("--weeks", type=int, default=12, help="총 주차 수")
     capacity = p.add_mutually_exclusive_group(required=True)
-    capacity.add_argument("--size", choices=SIZE_HOURS, help="주당 가용시간 · 소형 4시간, 중형 14시간, 대형 30시간")
+    capacity.add_argument("--size", choices=SIZE_HOURS, help="주당 가용시간 · 소형 7시간, 중형 14시간, 대형 30시간")
     capacity.add_argument("--hours-per-week", type=float, help="주당 학습·구현 가용시간 (시간)")
     p.add_argument("--include-reference", action="append", default=[], metavar="ID",
                    help="남는 시간에 배정할 보조 교육자료 ID. 여러 번 지정 가능")
