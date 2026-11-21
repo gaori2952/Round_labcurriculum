@@ -21,7 +21,7 @@ from typing import Any
 
 
 SLOT_MINUTES = 10
-SIZE_HOURS = {"소형": 7, "중형": 14, "대형": 30}
+SIZE_HOURS = {"소형": 7, "중형": 14, "대형": 28}
 
 
 class InputError(ValueError):
@@ -1044,7 +1044,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--materials", help="핵심·참고 교육자료 JSON")
     p.add_argument("--weeks", type=int, default=12, help="총 주차 수")
     capacity = p.add_mutually_exclusive_group(required=True)
-    capacity.add_argument("--size", choices=SIZE_HOURS, help="주당 가용시간 · 소형 7시간, 중형 14시간, 대형 30시간")
+    capacity.add_argument("--size", choices=SIZE_HOURS, help="주당 가용시간 · 소형 7시간, 중형 14시간, 대형 28시간")
     capacity.add_argument("--hours-per-week", type=float, help="주당 학습·구현 가용시간 (시간)")
     p.add_argument("--include-reference", action="append", default=[], metavar="ID",
                    help="남는 시간에 배정할 보조 교육자료 ID. 여러 번 지정 가능")
@@ -1056,6 +1056,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--profile", help="Bedrock 호출에 사용할 AWS 프로필")
     p.add_argument("--region", help="Bedrock 호출 리전")
     a = p.parse_args(argv)
+    output = Path(a.output_dir)
+    if a.bedrock_model and any((output / name).exists() for name in
+                               ("curriculum_bedrock.md", "bedrock_markdown_response.json")):
+        p.error("기존 Bedrock 출력이 있습니다. 다른 --output-dir을 지정하세요")
     try:
         hours = SIZE_HOURS[a.size] if a.size else a.hours_per_week
         if a.project or a.materials:
@@ -1078,11 +1082,18 @@ def main(argv: list[str] | None = None) -> int:
     except (InputError, ValueError, KeyError, OSError) as exc:
         print("입력 오류:", exc, file=sys.stderr)
         return 2
-    output = Path(a.output_dir)
     output.mkdir(parents=True, exist_ok=True)
     (output / "curriculum.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (output / "curriculum.md").write_text(format_md(result), encoding="utf-8")
     print(f"결과: {result['status']} / {output / 'curriculum.json'} / {output / 'curriculum.md'}")
+    if a.bedrock_model and result["weeks"]:
+        from lesson_analysis import export_markdown
+        try:
+            export_markdown(result, output, a.bedrock_model, a.profile, a.region, display_minutes)
+        except (ValueError, OSError) as exc:
+            print("Bedrock 공유용 Markdown 생성 실패:", exc, file=sys.stderr)
+            return 4
+        print(f"Bedrock 결과: {output / 'curriculum_bedrock.md'} / {output / 'bedrock_markdown_response.json'}")
     return 0 if result["status"] == "ready" else 3  # intentional: output still written
 
 

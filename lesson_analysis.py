@@ -39,6 +39,18 @@ def invoke(records, schema, instruction, tool, model, profile, region):
         "toolConfig": {"tools": [{"toolSpec": {"name": tool, "description": "교육과정 구조화",
                         "inputSchema": {"json": schema}}}], "toolChoice": {"tool": {"name": tool}}},
         "inferenceConfig": {"temperature": 0, "maxTokens": 8192}}
+    data = json.loads(converse(request, profile, region))
+    try:
+        calls = [b["toolUse"]["input"] for b in data["output"]["message"]["content"]
+                 if b.get("toolUse", {}).get("name") == tool]
+        if len(calls) != 1 or data.get("stopReason") != "tool_use":
+            raise ValueError("Bedrock 응답이 완전한 학습 분석을 포함하지 않습니다")
+        return calls[0]
+    except (KeyError, TypeError) as exc:
+        raise ValueError(f"AWS CLI 또는 Bedrock 응답을 확인하세요: {exc}") from exc
+
+
+def converse(request, profile, region):
     cmd = ["aws", "bedrock-runtime", "converse", "--output", "json", "--no-cli-pager"]
     if profile:
         cmd.extend(["--profile", profile])
@@ -49,16 +61,11 @@ def invoke(records, schema, instruction, tool, model, profile, region):
             request_path = Path(temporary) / "request.json"
             request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
             run = subprocess.run([*cmd, "--cli-input-json", f"file://{request_path}"],
-                                 text=True, encoding="utf-8", capture_output=True, timeout=180, check=True)
-        data = json.loads(run.stdout)
-        calls = [b["toolUse"]["input"] for b in data["output"]["message"]["content"]
-                 if b.get("toolUse", {}).get("name") == tool]
-        if len(calls) != 1 or data.get("stopReason") != "tool_use":
-            raise ValueError("Bedrock 응답이 완전한 학습 분석을 포함하지 않습니다")
-        return calls[0]
+                                 capture_output=True, timeout=180, check=True)
+        return run.stdout
     except subprocess.CalledProcessError as exc:
-        raise ValueError("Bedrock 호출 실패: " + exc.stderr.strip()[:500]) from exc
-    except (OSError, subprocess.TimeoutExpired, KeyError, TypeError) as exc:
+        raise ValueError("Bedrock 호출 실패: " + exc.stderr.decode("utf-8", errors="replace").strip()[:500]) from exc
+    except (OSError, subprocess.TimeoutExpired) as exc:
         raise ValueError(f"AWS CLI 또는 Bedrock 응답을 확인하세요: {exc}") from exc
 
 
@@ -137,3 +144,77 @@ def weekly_guides(weeks, model, profile, region):
                 or any(not isinstance(row.get(k), str) or not row[k].strip() for k in ("goal", "method", "reason"))):
             raise ValueError(f"{w['week']}주차 안내가 실제 일정과 일치하지 않습니다")
         w["guide"] = {"origin": "llm", **{k: row[k] for k in ("goal", "method", "reason")}}
+
+
+def export_markdown(result, output, model, profile, region, display_minutes):
+    """Produce a shareable Markdown document and verify it against the saved schedule."""
+    summary = result["summary"]
+    scheduled = ", ".join(summary["included_packages"])
+    omitted = ", ".join(row["id"] for row in summary["excluded_packages"]) or "없음"
+    title = " ".join(result["project"]["title"].split())
+    total = display_minutes(sum(w["used_minutes"] for w in result["weeks"]))
+    learning = display_minutes(sum(w["learning_minutes"] for w in result["weeks"]))
+    implementation = display_minutes(sum(w["implementation_minutes"] for w in result["weeks"]))
+    lines = [f"# {title} · 주차별 커리큘럼", "",
+             f"**총 {total}** · 구현 {implementation} · 학습 {learning}", "",
+             f"**배정 작업** · {scheduled}", "", f"**보류 작업** · {omitted}"]
+    for w in result["weeks"]:
+        used = display_minutes(w["used_minutes"])
+        cap = display_minutes(w["capacity_minutes"])
+        lines.extend(["", f"## {w['week']}주차 · {used} (상한 {cap})", ""])
+        if not w["activities"]:
+            lines.append("배정된 학습·작업 없음")
+            continue
+        lines.extend(["**목표** · {안내}", "", "**학습·실습 방법** · {안내}", "",
+                      "**배정 이유** · {안내}", ""])
+        for activity in w["activities"]:
+            time = display_minutes(activity["minutes"])
+            if activity["kind"] == "learning":
+                name = " ".join(activity["title"].split())
+                if activity["url"]:
+                    label = name.replace("[", r"\[").replace("]", r"\]")
+                    name = f"[{label}](<{activity['url']}>)"
+                lines.append(f"- 학습 {time} · {name}")
+            else:
+                lines.append(f"- 구현 {time} · {activity['id']}")
+                if activity["completed_in_this_chunk"]:
+                    deliverable = " ".join(activity["out"].split())
+                    lines.append(f"  - 산출물 · {deliverable}")
+    payload = {
+        "template": "\n".join(lines),
+        "weeks": [{"week": w["week"], "guide": w.get("guide"), "goals": w["goals"]}
+                  for w in result["weeks"]],
+    }
+    request = {
+        "modelId": model,
+        "system": [{"text": "template 전체를 한국어 Markdown 문서로 반환한다. {안내} 표시만 "
+                    "해당 주차의 guide와 goals에 근거한 한 줄짜리 안내 문장으로 바꾼다. "
+                    "제목, 활동, 산출물, 링크, 시간, 보류 목록은 그대로 복사한다. "
+                    "안내에 새 작업·자료·링크·시간을 넣거나 보류 작업을 배정되었다고 쓰지 않는다. "
+                    "문서 밖 설명과 코드 펜스는 쓰지 않는다."}],
+        "messages": [{"role": "user", "content": [{"text": json.dumps(payload, ensure_ascii=False)}]}],
+        "inferenceConfig": {"temperature": 0, "maxTokens": 12000},
+    }
+    raw = converse(request, profile, region)
+    (output / "bedrock_markdown_response.json").write_bytes(raw)
+    try:
+        response = json.loads(raw)
+        blocks = response["output"]["message"]["content"]
+        markdown = blocks[0]["text"]
+        if response["stopReason"] != "end_turn" or len(blocks) != 1 or not isinstance(markdown, str):
+            raise ValueError("Bedrock이 완전한 Markdown 텍스트를 반환하지 않았습니다")
+    except (KeyError, IndexError, TypeError) as exc:
+        raise ValueError("Bedrock Markdown 응답의 형식을 확인하세요") from exc
+    expected = [line for line in lines if line]
+    actual = [line for line in markdown.splitlines() if line.strip()]
+    if len(actual) != len(expected):
+        raise ValueError("Bedrock Markdown의 줄 구성이 확정 일정과 다릅니다")
+    for original, line in zip(expected, actual, strict=True):
+        if original.endswith("{안내}"):
+            prefix = original.removesuffix("{안내}")
+            valid = line.startswith(prefix) and bool(line[len(prefix):].strip())
+        else:
+            valid = original == line
+        if not valid:
+            raise ValueError("Bedrock Markdown에 확정 일정과 다른 내용이 있습니다")
+    (output / "curriculum_bedrock.md").write_bytes(markdown.encode("utf-8"))

@@ -23,7 +23,7 @@ python3 curriculum_generator.py --size 중형 --output-dir result
 |---|---:|---:|
 | 소형 | 7시간 | 84시간 |
 | 중형 | 14시간 | 168시간 |
-| 대형 | 30시간 | 360시간 |
+| 대형 | 28시간 | 336시간 |
 
 한 번 실행할 때 `--size 소형`, `--size 중형`, `--size 대형` 중 하나를 지정한다. 주당 시간을 직접 입력하려면 `--hours-per-week`를 사용한다. 핵심 작업과 학습이 예산을 넘으면 부족한 시간과 주당 필요한 최소 시간을 결과에 적는다.
 
@@ -53,7 +53,7 @@ python3 curriculum_generator.py --hours-per-week 7 \
 
 ## Python과 LLM 실행 순서
 
-**Python이 학습·구현 시간을 계산하고 주차를 배정한다.** Bedrock을 사용하면 배정 전에 선수학습을 분석하고, 배정 뒤에 주차별 학습 안내를 작성한다.
+**Python이 학습·구현 시간을 계산하고 주차를 배정한다.** Bedrock을 사용하면 배정 전 선수학습을 분석하고, 배정 뒤에는 주차별 안내와 공유용 Markdown을 작성한다.
 
 ```mermaid
 flowchart TD
@@ -74,20 +74,27 @@ flowchart TD
     L --> N["Python · curriculum.json / curriculum.md 저장"]
     J -->|"아니요"| N
     M --> N
+    N --> O{"Bedrock 사용 + 배정된 주차 있음?"}
+    O -->|"예"| P["LLM 3차 · export_markdown()<br/>공유용 Markdown 전문 작성"]
+    P --> Q["Python · 확정 일정 검증 후 Bedrock 텍스트와 AWS 응답 전문 저장"]
 ```
 
 | 실행 옵션 | AWS 호출 | 동작 |
 |---|---:|---|
 | 옵션 없음 | 0회 | Python 규칙으로 배정하고 안내를 작성한다. |
 | `--analysis 제안.json` | 0회 | 결과 JSON의 `analysis_proposal`을 별도 파일로 저장해 재사용한다. 주차별 안내는 Python이 작성한다. |
-| `--bedrock-model 모델ID` | 1~2회 | 선수학습을 제안하고, 일정에 활동이 배정되면 주차별 안내를 작성한다. |
+| `--bedrock-model 모델ID` | 1회 또는 3회 | 선수학습을 제안한다. 일정이 배정되면 주차별 안내와 공유용 Markdown 전문을 각각 작성한다. |
 
 Bedrock을 쓰려면 AWS CLI v2, Converse 도구 호출을 지원하는 모델과 사용 권한이 필요하다. 실행 명령에 `--bedrock-model 모델ID --profile 프로필명 --region 리전명`을 붙이면 작업과 자료의 입력 텍스트가 AWS로 전송된다.
 
-서울 리전에서 `global.anthropic.claude-sonnet-4-6` 모델 ID로 실제 1차 분석과 2차 주차별 안내 생성을 검증했다. 팀 CSV 초안에서 LLM이 제안한 선수지식에 연결 자료가 없으면 일정을 배정하고, Markdown 끝의 ‘추가 학습 참고’에 역량 이름과 검색어를 적는다. JSON에는 미충족 항목이 기록된다. `--strict`에서는 일정을 보류한다.
+서울 리전에서 `global.anthropic.claude-sonnet-4-6` 모델 ID로 실제 1차 분석, 2차 주차별 안내, 3차 공유용 Markdown 생성을 검증했다. 팀 CSV 초안에서 LLM이 제안한 선수지식에 연결 자료가 없으면 일정을 배정하고, Markdown 끝의 ‘추가 학습 참고’에 역량 이름과 검색어를 적는다. JSON에는 미충족 항목이 기록된다. `--strict`에서는 일정을 보류한다.
 
 - **1차 분석 → 일정에 반영.** 팀 CSV에서는 제안된 선수지식과 학습 방법을 반영하고, 선행 작업을 기존 관계에 추가한다. JSON으로 직접 입력한 값과 CSV의 자료별 제공 역량은 우선 적용한다. 원문을 확인할 수 없는 제안은 표시하고, 인용 일치 여부를 `analysis_provenance`에 기록한다. 개별 소요시간은 입력값 또는 CSV 변환 단계의 추정값을 사용한다. [제안 적용](lesson_analysis.py#L65-L119) · [일정 결정](curriculum_generator.py#L631-L792)
-- **2차 분석 → 확정 일정에 안내 추가.** 응답의 주차·활동 ID·순서를 확정 일정과 대조한 뒤 목표·방법·이유를 저장한다. 두 호출은 Python의 `subprocess.run()`에서 `aws bedrock-runtime converse`를 실행하고 구조화된 JSON 응답을 받는다. [AWS 호출](lesson_analysis.py#L35-L62) · [주차별 안내 검증](lesson_analysis.py#L122-L139)
+- **2차 분석 → 확정 일정에 안내 추가.** 응답의 주차·활동 ID·순서를 확정 일정과 대조한 뒤 목표·방법·이유를 저장한다. 세 호출은 Python의 `subprocess.run()`에서 `aws bedrock-runtime converse`를 실행하고 AWS 응답을 받는다. [Bedrock 호출 및 응답 검증](lesson_analysis.py)
+
+- **3차 생성 → 공유용 Markdown 저장.** 기존 `curriculum.json`과 `curriculum.md`를 먼저 저장한다. Bedrock이 확정 일정과 주차 안내를 받아 문서 전문을 작성한다. Python은 주차별 시간·활동·자료 링크·산출물·보류 목록이 확정 일정과 같은지 대조한다. 통과한 텍스트는 `curriculum_bedrock.md`에 그대로 저장하며, 이 호출의 응답 전문은 `bedrock_markdown_response.json`에 남긴다.
+
+마지막 호출 또는 검사가 실패하면 기존 결과 파일을 쓸 수 있다. 응답을 받은 경우 전문도 남긴다. Bedrock 공유용 파일 또는 응답 파일이 이미 있는 경우 새 `--output-dir`을 사용한다.
 
 ## 배정과 검증 기준
 
@@ -102,6 +109,7 @@ Bedrock을 쓰려면 AWS CLI v2, Converse 도구 호출을 지원하는 모델�
 | `needs_review` | 일정은 생성됐고 확인할 항목이 있음 | `3` |
 | `blocked` | 필수 학습 경로 또는 시간 예산 문제 등으로 일정 배정 보류 | `3` |
 | 입력·분석 오류 | CSV 형식, 분석 응답 등의 오류 | `2` |
+| Bedrock 최종 문서 생성 오류 | 확정 일정은 저장됐고 공유용 Markdown 생성 또는 검증이 실패함 | `4` |
 
 `--weeks`로 계획 기간을 바꿀 수 있다. `--strict`를 쓰면 검토가 필요한 계획을 보류한다. 실제 소요시간과 학습 효과는 실측으로 확인해야 한다.
 

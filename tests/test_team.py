@@ -149,7 +149,7 @@ class TeamCurriculumTest(unittest.TestCase):
         self.assertNotIn("선수학습 확인 필요:", markdown)
 
     def test_user_selects_one_weekly_size(self):
-        for size, hours in (("소형", 7), ("중형", 14), ("대형", 30)):
+        for size, hours in (("소형", 7), ("중형", 14), ("대형", 28)):
             with self.subTest(size=size), tempfile.TemporaryDirectory() as folder:
                 self.assertEqual(main(["--size", size, "--output-dir", folder]), 3)
                 result = json.loads((Path(folder) / "curriculum.json").read_text())
