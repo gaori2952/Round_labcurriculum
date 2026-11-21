@@ -8,7 +8,7 @@ import re
 import sys
 
 from curriculum_generator import SIZE_HOURS, SLOT_MINUTES, display_minutes, to_minutes
-from lesson_analysis import export_markdown, invoke, weekly_guides
+from lesson_analysis import export_blocked_markdown, export_markdown, invoke, weekly_guides
 from team_csv import read_rows
 
 
@@ -230,6 +230,23 @@ def main(argv=None):
                                   "project_hour_divisor": str(args.project_hour_divisor)},
                   "weeks": weeks, "summary": summary, "warnings": [reason] if reason else [],
                   "material_selection": decision, "budget_validation": validation}
+        if reason:
+            learning_minutes = sum(m["minutes"] for m in selected)
+            capacity_minutes = cap * args.weeks
+            required_minutes = project_minutes + learning_minutes
+            min_slots = (required_minutes // SLOT_MINUTES + args.weeks - 1) // args.weeks
+            fixed_by_week = totals_by_week(selected)
+            for week, activities in recurring_activities(scheduled_tasks).items():
+                fixed_by_week[week] += sum(a["minutes"] for a in activities)
+            result["budget_shortfall"] = {
+                "capacity_minutes": capacity_minutes,
+                "project_minutes": project_minutes,
+                "learning_minutes": learning_minutes,
+                "required_minutes": required_minutes,
+                "additional_minutes": max(0, required_minutes - capacity_minutes),
+                "minimum_weekly_minutes": max(min_slots * SLOT_MINUTES, max(fixed_by_week.values(), default=0)),
+                "over_week_minutes": {str(w): n - cap for w, n in fixed_by_week.items() if n > cap},
+            }
         save(out, "curriculum.json", result)
         lines = [f"# {project['title']}", ""]
         if reason:
@@ -245,12 +262,12 @@ def main(argv=None):
     except (ValueError, InvalidOperation, KeyError, OSError) as exc:
         print(f"입력 또는 분석 오류 · {exc}", file=sys.stderr)
         return 2
-    if weeks:
-        try:
-            export_markdown(result, out, *model_args, display_minutes)
-        except (ValueError, OSError) as exc:
-            print(f"Bedrock 공유용 Markdown 생성 실패 · {exc}", file=sys.stderr)
-            return 4
+    exporter = export_blocked_markdown if reason else export_markdown
+    try:
+        exporter(result, out, *model_args, display_minutes)
+    except (ValueError, OSError) as exc:
+        print(f"Bedrock Markdown 생성 실패 · {exc}", file=sys.stderr)
+        return 4
     print(f"결과 · {result['status']} · {out / 'curriculum.json'}")
     return 3
 

@@ -50,3 +50,25 @@ class BedrockMarkdownTests(unittest.TestCase):
                 else:
                     self.assertEqual(code, 0)
                     self.assertEqual(share.read_bytes(), expected[0][0])
+
+    def test_unfilled_guidance_is_retried_and_replaced(self):
+        from lesson_analysis import write_markdown_response
+
+        with TemporaryDirectory() as directory:
+            out = Path(directory)
+            template = "# 계획\n\n**목표** · {안내}"
+            complete = template.replace("{안내}", "완성된 안내") + "\n"
+
+            def response(text):
+                return json.dumps({"stopReason": "end_turn",
+                                   "output": {"message": {"content": [{"text": text}]}}}).encode()
+
+            first = response(template)
+            second = response(complete)
+            with patch("lesson_analysis.converse", side_effect=[first, second]) as model:
+                write_markdown_response({"template": template}, template.splitlines(), "문서를 작성한다",
+                                        200, out, "mock", None, None)
+            self.assertEqual(model.call_count, 2)
+            self.assertEqual((out / "bedrock_markdown_response_attempt_1.json").read_bytes(), first)
+            self.assertEqual((out / "bedrock_markdown_response.json").read_bytes(), second)
+            self.assertEqual((out / "curriculum_bedrock.md").read_bytes(), complete.encode())

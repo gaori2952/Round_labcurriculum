@@ -185,26 +185,71 @@ def export_markdown(result, output, model, profile, region, display_minutes):
         "weeks": [{"week": w["week"], "guide": w.get("guide"), "goals": w["goals"]}
                   for w in result["weeks"]],
     }
+    instruction = (
+        "template 전체를 한국어 Markdown 문서로 반환한다. {안내} 표시만 "
+        "해당 주차의 guide와 goals에 근거한 한 줄짜리 안내 문장으로 바꾼다. "
+        "제목, 활동, 산출물, 링크, 시간, 보류 목록은 그대로 복사한다. "
+        "안내에 새 작업·자료·링크·시간을 넣거나 보류 작업을 배정되었다고 쓰지 않는다. "
+        "모든 주차에서 세 안내 칸을 실제 문장으로 채우고 {안내} 토큰이 남아 있지 않은지 확인한다. "        "문서 밖 설명과 코드 펜스는 쓰지 않는다."
+    )
+    write_markdown_response(payload, lines, instruction, 12000, output, model, profile, region)
+
+
+def export_blocked_markdown(result, output, model, profile, region, display_minutes):
+    """Explain a verified budget refusal without proposing a schedule."""
+    detail = result["budget_shortfall"]
+    title = " ".join(result["project"]["title"].split())
+    duration = lambda key: display_minutes(detail[key])
+    lines = [
+        f"# {title} · 커리큘럼 배정 보류", "",
+        "**상태** · `blocked`", f"**보류 사유** · {result['warnings'][0]}", "",
+        f"**가용시간** · {duration('capacity_minutes')}",
+        f"**필요시간** · 구현 {duration('project_minutes')} + 학습 {duration('learning_minutes')} = {duration('required_minutes')}",
+        f"**총 가용시간 대비 부족** · {duration('additional_minutes')}",
+        f"**시간 합계 기준 주당 최소** · {duration('minimum_weekly_minutes')}", "",
+        "## 보류 이유", "", "{안내}", "", "## 다시 실행하는 방법", "", "{안내}",
+    ]
+    payload = {"template": "\n".join(lines), "weeks_requested": result["constraints"]["weeks"],
+               "fixed_week_overages": detail["over_week_minutes"],
+               "task_ids_under_review": result["summary"]["included_packages"]}
+    instruction = (
+        "template 전체를 한국어 Markdown 문서로 반환한다. {안내} 표시만 한 줄짜리 설명으로 바꾼다. "
+        "첫 설명에는 주어진 예산에서 보류한 이유를, 두 번째 설명에는 가용시간을 늘리거나 "
+        "사용자가 핵심 범위를 정한 뒤 재실행할 수 있다는 점을 쓴다. 새 시간 숫자, 구체적인 삭제 작업, "
+        "주차별 일정, 자료 링크를 만들지 않는다. 고정된 제목과 수치, 상태, 사유는 그대로 복사한다. "
+        "바깥쪽 코드 펜스나 메타 설명을 붙이지 않는다."
+    )
+    write_markdown_response(payload, lines, instruction, 2400, output, model, profile, region)
+
+
+def write_markdown_response(payload, lines, instruction, max_tokens, output, model, profile, region):
     request = {
         "modelId": model,
-        "system": [{"text": "template 전체를 한국어 Markdown 문서로 반환한다. {안내} 표시만 "
-                    "해당 주차의 guide와 goals에 근거한 한 줄짜리 안내 문장으로 바꾼다. "
-                    "제목, 활동, 산출물, 링크, 시간, 보류 목록은 그대로 복사한다. "
-                    "안내에 새 작업·자료·링크·시간을 넣거나 보류 작업을 배정되었다고 쓰지 않는다. "
-                    "문서 밖 설명과 코드 펜스는 쓰지 않는다."}],
+        "system": [{"text": instruction}],
         "messages": [{"role": "user", "content": [{"text": json.dumps(payload, ensure_ascii=False)}]}],
-        "inferenceConfig": {"temperature": 0, "maxTokens": 12000},
+        "inferenceConfig": {"temperature": 0, "maxTokens": max_tokens},
     }
-    raw = converse(request, profile, region)
-    (output / "bedrock_markdown_response.json").write_bytes(raw)
-    try:
-        response = json.loads(raw)
-        blocks = response["output"]["message"]["content"]
-        markdown = blocks[0]["text"]
-        if response["stopReason"] != "end_turn" or len(blocks) != 1 or not isinstance(markdown, str):
-            raise ValueError("Bedrock이 완전한 Markdown 텍스트를 반환하지 않았습니다")
-    except (KeyError, IndexError, TypeError) as exc:
-        raise ValueError("Bedrock Markdown 응답의 형식을 확인하세요") from exc
+    raw_path = output / "bedrock_markdown_response.json"
+    for attempt in (1, 2):
+        raw = converse(request, profile, region)
+        raw_path.write_bytes(raw)
+        try:
+            response = json.loads(raw)
+            blocks = response["output"]["message"]["content"]
+            markdown = blocks[0]["text"]
+            if response["stopReason"] != "end_turn" or len(blocks) != 1 or not isinstance(markdown, str):
+                raise ValueError("Bedrock이 완전한 Markdown 텍스트를 반환하지 않았습니다")
+        except (KeyError, IndexError, TypeError) as exc:
+            raise ValueError("Bedrock Markdown 응답의 형식을 확인하세요") from exc
+        if "{안내}" not in markdown:
+            break
+        if attempt == 2:
+            raise ValueError("자동 재요청 후에도 Bedrock Markdown에 빈 안내 표시가 남았습니다")
+        (output / "bedrock_markdown_response_attempt_1.json").write_bytes(raw)
+        request["system"][0]["text"] += (
+            " 이전 응답에 {안내} 표시가 남았다. 전체 문서를 다시 작성하고, "
+            "모든 {안내}를 실제 한국어 문장으로 채운다. 주차별 guide가 있으면 해당 필드를 사용한다."
+        )
     expected = [line for line in lines if line]
     actual = [line for line in markdown.splitlines() if line.strip()]
     if len(actual) != len(expected):

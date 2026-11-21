@@ -66,3 +66,33 @@ class ScheduledCSVTests(unittest.TestCase):
         self.assertEqual([week["used_minutes"] for week in weeks],[80,80,80])
         self.assertEqual([parts[0]["minutes"] for parts in recurring],[40,40,40])
         self.assertEqual([parts[0]["completed_in_this_chunk"] for parts in recurring],[False,False,True])
+
+    def test_budget_shortage_still_writes_bedrock_markdown(self):
+        import scheduled_csv
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            project, materials, output = root/"project.csv", root/"materials.csv", root/"result"
+            project.write_text("title,package,name,do,out,hours,core,goal\n사례,W1,작업,구현,산출물,16,핵심,기능\n")
+            materials.write_text("id,title,url,topic\nA,학습,https://example.org,1주차 · W1 · 1순위 · 배정 1시간\n")
+            responses = []
+
+            def converse(request, *_):
+                payload = json.loads(request["messages"][0]["content"][0]["text"])
+                document = payload["template"].replace("{안내}", "핵심 범위와 시간 상한을 검토합니다.") + "\n"
+                responses.append(document.encode())
+                return json.dumps({"stopReason":"end_turn",
+                                   "output":{"message":{"content":[{"text":document}]}}}).encode()
+
+            with patch("lesson_analysis.converse", side_effect=converse) as call:
+                code = scheduled_csv.main([
+                    "--project-csv",str(project),"--materials-csv",str(materials),
+                    "--size","소형","--weeks","1","--project-hour-divisor","2",
+                    "--bedrock-model","mock","--output-dir",str(output)])
+            self.assertEqual(code,3)
+            self.assertEqual(call.call_count,1)
+            self.assertEqual((output/"curriculum_bedrock.md").read_bytes(),responses[0])
+            result=json.loads((output/"curriculum.json").read_bytes())
+            self.assertEqual(result["weeks"],[])
+            self.assertEqual(result["budget_shortfall"]["additional_minutes"],120)
+            self.assertIn("2시간",(output/"curriculum_bedrock.md").read_text())

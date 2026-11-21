@@ -24,7 +24,7 @@ python3 scheduled_csv.py \
 - `curriculum.json`의 `status`와 `weeks`를 함께 확인한다. 종료 코드 3은 검토용 일정이나 배정 보류에 공통으로 쓰인다.
 - 2순위 자료의 시간 검증 실패는 프로그램이 처리한다. 후보 전체와 이전 응답, 실제 초과시간을 Bedrock에 한 번 더 보낸다. 호출 도구에서 자료 선택이나 시간표를 따로 고치지 않는다.
 - 공유용 결과는 `curriculum_bedrock.md`이며 마지막 Bedrock 응답 전문은 `bedrock_markdown_response.json`이다. 결과 문장은 편집 없이 전달한다.
-- 재입력 후에도 시간 검증을 통과하지 못하면 보류 사유와 시도별 JSON을 전달한다. 공유용 생성만 실패한 경우에는 종료 코드 4와 기존 `curriculum.json`, `curriculum.md`를 확인한다.
+- 핵심 범위가 가용시간을 넘기거나 재입력 후에도 시간 검증을 통과하지 못하면 배정 보류 Markdown과 JSON을 전달한다. 공유용 생성만 실패한 경우에는 종료 코드 4와 기존 `curriculum.json`, `curriculum.md`를 확인한다.
 - 교육자료 없이 작업을 임의로 줄이거나 입력의 구현시간을 재조정하지 않는다. 입력 형식이 다르면 README의 필요한 열을 안내한다.
 
 선정 프로젝트 CSV와 선정 교육자료 CSV 두 장, 또는 구조화 JSON 두 장을 받는 기존 경로는 `curriculum_generator.py`를 사용한다.
