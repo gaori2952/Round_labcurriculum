@@ -29,11 +29,12 @@ class ScheduledCSVTests(unittest.TestCase):
 
             def choose(records, *args):
                 history.append(records)
-                return ({"selected":[{"id":"B","reason":"실습"}], "excluded":[{"id":"C","reason":"보류"}],
-                         "selected_minutes":70}
-                        if len(history)==1 else
-                        {"selected":[{"id":"C","reason":"예산 적합"}], "excluded":[{"id":"B","reason":"시간 초과"}],
-                         "selected_minutes":40})
+                if len(history) == 1:
+                    return {"decisions": {"B": {"decision": "selected", "reason": "긴 자료"},
+                                          "C": {"decision": "excluded", "reason": "짧은 자료"}}}
+                bundle = next(k for k, v in records["feasible_bundles"].items() if v == ["C"])
+                return {"bundle_id": bundle, "reasons": {"B": "길어서 보류", "C": "예산 적합"}}
+
 
             def guides(weeks, *args):
                 for week in weeks:
@@ -48,12 +49,14 @@ class ScheduledCSVTests(unittest.TestCase):
             self.assertIn(code, (0,3))
             self.assertEqual(history[0]["optional_learning_budget_minutes"],60)
             self.assertEqual(history[1]["budget_validation"]["over_budget_minutes"],10)
-            self.assertNotIn("feasible_bundles",history[1])
+            self.assertEqual(list(history[1]["feasible_bundles"].values()), [[], ["C"]])
             self.assertEqual(export.call_count,1)
             result=json.loads((out/"curriculum.json").read_bytes())
             self.assertEqual(result["weeks"][0]["capacity_minutes"],1680)
             self.assertEqual(result["weeks"][0]["used_minutes"],1660)
             self.assertEqual(result["summary"]["scheduled_material_ids"],["A","C"])
+            self.assertEqual(result["material_selection"]["selected_minutes"],40)
+            self.assertEqual(result["material_selection"]["excluded"][0]["id"],"B")
             activities = result["weeks"][0]["activities"]
             self.assertEqual(activities[0]["covers"], "C01 기능 설계: 일부")
             self.assertEqual(activities[-1]["competencies"], "C01 기능 설계")
@@ -105,3 +108,41 @@ class ScheduledCSVTests(unittest.TestCase):
             self.assertEqual(result["weeks"],[])
             self.assertEqual(result["budget_shortfall"]["additional_minutes"],120)
             self.assertIn("2시간",(output/"curriculum_bedrock.md").read_text())
+
+
+    def test_material_id_errors_are_retried_with_the_original_response(self):
+        from collections import Counter
+        import scheduled_csv
+
+        options = [{"id":mid,"week":1,"minutes":minutes} for mid,minutes in
+                   (("M04",10),("M07",30),("M15",20),("M18",20),("M24",30))]
+        old = {"selected":[{"id":mid,"reason":"기존"} for mid in ("M04","M07","M24")],
+               "excluded":[{"id":mid,"reason":"기존"} for mid in ("M07","M18")], "selected_minutes":60}
+        first = {"decisions":{"M04":{"decision":"selected","reason":"합계 점검"},
+                              "UNKNOWN":{"decision":"excluded","reason":"오류"}}}
+        reasons = {m["id"]: "예산과 관련성 검토" for m in options}
+        for initial, corrected in ((old, True), (first, True), (first, False)):
+            def reply(records, *args):
+                if "feasible_bundles" not in records:
+                    return initial
+                bundle = next(key for key, ids in records["feasible_bundles"].items()
+                              if ids == ["M04", "M15", "M24"])
+                return {"bundle_id": bundle if corrected else "UNKNOWN", "reasons": reasons}
+
+            with self.subTest(initial=initial, corrected=corrected), TemporaryDirectory() as directory, \
+                    patch.object(scheduled_csv,"invoke",side_effect=reply) as model:
+                out = Path(directory)
+                decision, validation = scheduled_csv.choose_optional(
+                    options, Counter(), 360, 420, 1, out, "mock", None, None)
+                self.assertEqual(model.call_count,2)
+                retry = model.call_args_list[1].args[0]
+                self.assertEqual(retry["previous_response"],initial)
+                self.assertIn("M15",retry["budget_validation"]["missing_ids"])
+                self.assertEqual(json.loads((out/"bedrock_material_selection_attempt_1.json").read_bytes()),initial)
+                self.assertEqual(validation["status"],"accepted" if corrected else "blocked")
+                if corrected:
+                    self.assertEqual(decision["selected_minutes"],60)
+                    self.assertEqual([row["id"] for row in decision["selected"]],["M04","M15","M24"])
+                else:
+                    self.assertIn("UNKNOWN",retry["budget_validation"]["unexpected_ids"])
+                    self.assertTrue(validation["invalid_response_shape"])

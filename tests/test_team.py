@@ -26,7 +26,7 @@ class TeamCurriculumTest(unittest.TestCase):
         self.assertEqual(result["status"], "needs_review")
         self.assertEqual(len(result["weeks"]), 12)
         self.assertTrue(all(0 < week["used_minutes"] <= 420 for week in result["weeks"]))
-        self.assertTrue(all(a["minutes"] % 10 == 0 for w in result["weeks"] for a in w["activities"]))
+        self.assertTrue(all(a["minutes"] % 5 == 0 for w in result["weeks"] for a in w["activities"]))
         self.assertEqual(len(result["team_export"]["input_files"]), 2)
         self.assertTrue(all(unit["section"] for unit in result["learning_matches"]))
         self.assertTrue(any("The Flow Class" in unit["section"] for unit in result["learning_matches"]))

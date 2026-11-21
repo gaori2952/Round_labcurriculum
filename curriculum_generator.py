@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 
-SLOT_MINUTES = 10
+SLOT_MINUTES = 5
 SIZE_HOURS = {"소형": 7, "중형": 14, "대형": 28}
 
 
@@ -65,7 +65,7 @@ def to_minutes(value: Any, label: str, multiplier: int, *, ceiling: bool = False
     rounding = ROUND_FLOOR if ceiling else ROUND_CEILING
     slots = (n / SLOT_MINUTES).to_integral_value(rounding=rounding)
     if slots == 0:
-        fail(f"{label}: 10분 이상이어야 합니다")
+        fail(f"{label}: {SLOT_MINUTES}분 이상이어야 합니다")
     return int(slots) * SLOT_MINUTES
 
 

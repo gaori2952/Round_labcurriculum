@@ -35,7 +35,7 @@ class CurriculumTests(unittest.TestCase):
                 self.assertTrue(all(w['used_minutes'] <= hours * 60 for w in result['weeks']))
                 if status == 'blocked':
                     self.assertEqual(result['summary']['core_shortfall_minutes'], 11 * 60)
-                    self.assertEqual(result['summary']['minimum_weekly_minutes'], 380)
+                    self.assertEqual(result['summary']['minimum_weekly_minutes'], 375)
 
     def run_plan(self, project=None, materials=None, **kwargs):
         return generate(copy.deepcopy(project if project is not None else P),
@@ -64,13 +64,13 @@ class CurriculumTests(unittest.TestCase):
     def test_spreads_available_work_across_requested_weeks(self):
         r = self.run_plan(weeks=12, hours_per_week=7)
         minutes = [week['used_minutes'] for week in r['weeks']]
-        self.assertEqual(minutes, [210] * 6 + [200] * 6)
+        self.assertEqual(minutes, [205] * 12)
         self.assertEqual(r['summary']['scheduled_hours'], 41)
         self.assertTrue(all(week['capacity_minutes'] == 420 for week in r['weeks']))
         uneven = self.run_plan(weeks=11, hours_per_week=7)
         minutes = [week['used_minutes'] for week in uneven['weeks']]
         self.assertEqual(sum(minutes), 2460)
-        self.assertEqual(max(minutes) - min(minutes), 10)
+        self.assertEqual(max(minutes) - min(minutes), 5)
 
     def test_week_cap_and_full_assignment(self):
         r = self.run_plan()

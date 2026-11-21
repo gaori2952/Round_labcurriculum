@@ -2,6 +2,7 @@
 import argparse
 from collections import Counter
 from decimal import Decimal, InvalidOperation
+from itertools import combinations
 import json
 from pathlib import Path
 import re
@@ -79,12 +80,14 @@ def recurring_activities(tasks):
 def choose_optional(optional, required_by_week, project_minutes, cap, weeks, output, model, profile, region):
     by_id = {m["id"]: m for m in optional}
     budget = cap * weeks - project_minutes - sum(required_by_week.values())
-    item = {"type": "object", "required": ["id", "reason"],
-            "properties": {"id": {"type": "string", "enum": list(by_id)}, "reason": {"type": "string"}}}
-    schema = {"type": "object", "required": ["selected", "excluded", "selected_minutes"],
-              "properties": {"selected": {"type": "array", "items": item},
-                             "excluded": {"type": "array", "items": item},
-                             "selected_minutes": {"type": "integer", "minimum": 0, "maximum": budget}}}
+    item = {"type": "object", "required": ["decision", "reason"], "additionalProperties": False,
+            "properties": {"decision": {"type": "string", "enum": ["selected", "excluded"]},
+                           "reason": {"type": "string"}}}
+    schema = {"type": "object", "required": ["decisions"], "additionalProperties": False,
+              "properties": {"decisions": {
+                  "type": "object", "required": list(by_id), "additionalProperties": False,
+                  "properties": dict.fromkeys(by_id, item),
+              }}}
     records = {"optional_learning_budget_minutes": budget,
                "weekly_optional_limits": {w: cap - required_by_week[w] for w in range(1, weeks + 1)},
                "priority_2_options": [{k: m.get(k, "") for k in
@@ -92,35 +95,79 @@ def choose_optional(optional, required_by_week, project_minutes, cap, weeks, out
                                       for m in optional]}
     if not optional:
         return {"selected": [], "excluded": [], "selected_minutes": 0}, None
-    prompt = ("고정된 minutes와 배정 주차를 기준으로 2순위 교육자료를 직접 고른다. "
-              "총 예산과 각 주의 상한을 모두 점검한다. 각 ID는 selected 또는 excluded에 한 번 넣고 사유를 쓴다. "
-              "selected_minutes에는 선택한 자료의 분 합계를 적는다. "
-              "이전 응답과 검증 결과가 들어오면 그 초과를 해소할 선택을 다시 제출한다. "
-              "자료의 시간과 주차를 바꾸지 않는다.")
+    prompt = ("총 예산과 각 주의 상한을 먼저 고려해 최종 자료 선택을 정한다. "
+              "decisions 객체에 모든 후보 ID를 키로 한 번씩 넣고, 각 ID의 최종 decision과 이유 한 문장을 적는다. "
+              "decision 값은 selected 또는 excluded다. 별도의 목록이나 시간 합계는 작성하지 않는다. "
+              "이전 응답과 검증 결과가 있으면 누락·미등록 ID와 시간 초과를 바로잡아 "
+              "모든 후보에 대한 최종 결정을 다시 제출한다. 자료의 시간과 주차를 바꾸지 않는다.")
+    bundles = {}
     for attempt in (1, 2):
         response = invoke(records, schema, prompt, "select_optional_materials", model, profile, region)
         save(output, f"bedrock_material_selection_attempt_{attempt}.json", response)
-        selected_ids = [row["id"] for row in response["selected"]]
-        all_ids = selected_ids + [row["id"] for row in response["excluded"]]
-        if len(all_ids) != len(set(all_ids)) or set(all_ids) != set(by_id):
-            raise ValueError("Bedrock의 자료 ID가 입력과 일치하지 않습니다")
-        counts = totals_by_week([by_id[mid] for mid in selected_ids])
+        fields = response if isinstance(response, dict) else {}
+        if bundles:
+            bundle_id = fields.get("bundle_id")
+            reasons = fields.get("reasons")
+            correct_shape = (set(fields) == {"bundle_id", "reasons"} and isinstance(reasons, dict)
+                             and isinstance(bundle_id, str) and bundle_id in bundles)
+            decisions = {mid: {"decision": "selected" if mid in bundles[bundle_id] else "excluded",
+                               "reason": reason} for mid, reason in reasons.items()} if correct_shape else {}
+        else:
+            decisions = fields.get("decisions")
+            correct_shape = isinstance(decisions, dict) and set(fields) == {"decisions"}
+            decisions = decisions if isinstance(decisions, dict) else {}
+        missing_ids = sorted(by_id.keys() - decisions.keys())
+        unexpected_ids = sorted(decisions.keys() - by_id.keys())
+        selection = {"selected": [], "excluded": []}
+        invalid_ids = []
+        for mid in by_id.keys() & decisions.keys():
+            entry = decisions[mid]
+            if (not isinstance(entry, dict) or set(entry) != {"decision", "reason"}
+                    or entry["decision"] not in ("selected", "excluded")
+                    or not isinstance(entry["reason"], str) or not entry["reason"].strip()):
+                invalid_ids.append(mid)
+        ids_valid = correct_shape and not (missing_ids or unexpected_ids or invalid_ids)
+        if ids_valid:
+            for mid in by_id:
+                entry = decisions[mid]
+                selection[entry["decision"]].append({"id": mid, "reason": entry["reason"]})
+        counts = totals_by_week([by_id[row["id"]] for row in selection["selected"]])
         actual = sum(counts.values())
+        selection["selected_minutes"] = actual
         exceeded_weeks = {str(w): n + required_by_week[w] - cap for w, n in counts.items()
                           if n + required_by_week[w] > cap}
-        reported = response["selected_minutes"]
-        valid = type(reported) is int and reported == actual and actual <= budget and not exceeded_weeks
+        valid = ids_valid and actual <= budget and not exceeded_weeks
         validation = {"status": "accepted" if valid else ("retrying" if attempt == 1 else "blocked"),
                       "attempt": attempt, "optional_learning_budget_minutes": budget,
-                      "bedrock_reported_minutes": reported, "actual_selected_minutes": actual,
-                      "over_budget_minutes": max(0, actual - budget), "over_week_minutes": exceeded_weeks}
+                      "actual_selected_minutes": actual if ids_valid else None,
+                      "over_budget_minutes": max(0, actual - budget) if ids_valid else None,
+                      "over_week_minutes": exceeded_weeks, "invalid_response_shape": not correct_shape,
+                      "missing_ids": missing_ids, "unexpected_ids": unexpected_ids,
+                      "invalid_decision_ids": sorted(invalid_ids)}
         save(output, f"budget_validation_attempt_{attempt}.json", validation)
         if valid:
-            return response, validation
+            return selection, validation
         if attempt == 1:
             records = {**records, "previous_response": response, "budget_validation": validation}
-            print("예산 검증 실패 · Bedrock에 자동 재입력", flush=True)
-    return response, validation
+            # shortcut: enumerate budget-valid bundles only for up to eight candidates to bound prompt size.
+            if len(optional) <= 8:
+                for size in range(len(optional) + 1):
+                    for group in combinations(optional, size):
+                        group_counts = totals_by_week(group)
+                        if (sum(group_counts.values()) <= budget and
+                                all(n + required_by_week[w] <= cap for w, n in group_counts.items())):
+                            bundles[f"B{len(bundles)}"] = [m["id"] for m in group]
+                records["feasible_bundles"] = bundles
+                schema = {"type": "object", "required": ["bundle_id", "reasons"], "additionalProperties": False,
+                          "properties": {"bundle_id": {"type": "string", "enum": list(bundles)},
+                                         "reasons": {"type": "object", "required": list(by_id),
+                                                     "additionalProperties": False,
+                                                     "properties": dict.fromkeys(by_id, {"type": "string"})}}}
+                prompt = ("feasible_bundles에서 프로젝트에 도움이 되는 자료 조합 하나를 bundle_id로 고른다. "
+                          "모든 조합은 프로그램이 시간과 주차를 검증했다. 조합 내용을 바꾸지 않는다. "
+                          "reasons에는 각 후보 ID를 키로 선택 또는 보류 사유 한 문장씩만 적는다.")
+            print("자료 선택 검증 실패 · Bedrock에 자동 재입력", flush=True)
+    return (selection if ids_valid else None), validation
 
 
 def place(tasks, materials, cap, weeks):
@@ -217,7 +264,7 @@ def main(argv=None):
             decision, validation = choose_optional(optional, reserved, sequential_minutes, cap,
                                                   args.weeks, out, *model_args)
             if validation and validation["status"] == "blocked":
-                reason = "자동 재입력 후에도 자료 선택이 시간 검증을 통과하지 못했습니다"
+                reason = "자동 재입력 후에도 자료 선택이 ID 또는 시간 검증을 통과하지 못했습니다"
         selected_ids = {r["id"] for r in decision["selected"]} if decision else set()
         selected = [m for m in materials if m["priority"] == 1 or m["id"] in selected_ids]
         included = {t["id"] for t in scheduled_tasks}
