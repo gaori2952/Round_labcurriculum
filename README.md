@@ -24,7 +24,7 @@ python3 curriculum_generator.py --size 중형 --output-dir result
 | 소형 | `--size 소형` | 7시간 | 84시간 |
 | 중형 | `--size 중형` | 14시간 | 168시간 |
 | 대형 | `--size 대형` | 28시간 | 336시간 |
-| 직접 입력 예시 | `--hours-per-week 15` | 15시간 | 180시간 |
+| 직접 입력 | `--hours-per-week` | 입력한 시간 | 입력한 시간 × 12 |
 
 `curriculum_generator.py`와 `scheduled_csv.py` 모두 시간 옵션을 한 번에 하나 받는다. 규모로 실행하려면 `--size`를 쓰고, 원하는 시간을 직접 넣으려면 `--hours-per-week`에 시간 단위의 숫자를 쓴다. 핵심 작업과 학습이 예산을 넘으면 부족한 시간과 주당 필요한 최소 시간을 결과에 적는다.
 
