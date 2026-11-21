@@ -128,14 +128,23 @@ Bedrock을 쓰려면 AWS CLI v2, Converse 도구 호출을 지원하는 모델�
 python3 scheduled_csv.py \
   --project-csv "/absolute/path/프로젝트_응용.csv" \
   --materials-csv "/absolute/path/주차별_교육자료_배치.csv" \
-  --project-hour-divisor 2 --size 대형 --weeks 12 \
+  --size 대형 --weeks 12 \
   --bedrock-model global.anthropic.claude-sonnet-4-6 \
   --region ap-northeast-2 --output-dir result-large
 ```
 
-이 예는 프로젝트 시간을 절반으로 환산하고 주당 28시간을 상한으로 사용한다. Python은 핵심 작업과 1순위 교육자료를 우선 확보한다. Bedrock은 남는 학습 예산에서 2순위 자료를 선택한다. 첫 응답이 예산을 넘기거나 보고한 합계가 실제 합계와 다르면 프로그램이 이전 응답과 검증 결과를 보내 자동으로 1회 재입력한다. 다시 검증을 통과하지 못하면 보류 사유를 저장한다. 유효한 선택은 Python이 주차별로 배정하고 Bedrock이 최종 공유용 Markdown을 작성한다. 핵심 범위가 가용시간을 넘겨 주차를 배정할 수 없는 경우에도 Bedrock이 부족 시간과 재실행 방법을 담은 배정 보류 Markdown을 작성한다. 이 경우 종료 코드 3과 `budget_shortfall`을 확인한다.
+이 예는 CSV의 프로젝트 구현시간을 사용하고 주당 28시간을 상한으로 둔다. 시간 환산을 요청한 실행에서만 `--project-hour-divisor <값>`을 지정한다. Python은 핵심 작업과 1순위 교육자료를 우선 확보한다. Bedrock은 남는 학습 예산에서 2순위 자료를 선택한다. 첫 응답이 예산을 넘기거나 보고한 합계가 실제 합계와 다르면 프로그램이 이전 응답과 검증 결과를 보내 자동으로 1회 재입력한다. 다시 검증을 통과하지 못하면 보류 사유를 저장한다. 유효한 선택은 Python이 주차별로 배정하고 Bedrock이 최종 공유용 Markdown을 작성한다. 핵심 범위가 가용시간을 넘겨 주차를 배정할 수 없는 경우에도 Bedrock이 부족 시간과 재실행 방법을 담은 배정 보류 Markdown을 작성한다. 이 경우 종료 코드 3과 `budget_shortfall`을 확인한다.
 
 다른 LLM 도구나 자동화 환경에서의 실행 순서와 파일 반환 규칙은 [AGENTS.md](AGENTS.md)에 정리했다. 동일한 규칙으로 시간표를 검증하며, Bedrock의 자료 선택과 안내 문장은 모델·실행에 따라 달라질 수 있다.
+
+### 입력 CSV 예시
+
+- [응용 프로젝트 CSV 예시](examples/scheduled_csv/프로젝트_응용_예시.csv)
+- [주차별 교육자료 CSV 예시](examples/scheduled_csv/주차별_교육자료_배치_예시.csv)
+
+예시 두 장에는 2주 분량을 넣었다. 위 명령에서 파일 경로를 바꾸고 `--weeks 2 --size 소형`으로 실행한다. 실제 데이터를 준비할 때는 프로젝트마다 `title`과 `goal`을 동일하게 유지하고 작업 ID와 자료 ID를 각각 고유하게 만든다. `hours`에는 시간 단위의 양수를 넣는다. 자료 `topic`의 주차 번호는 실행 기간 안에 있어야 한다. 주차·우선순위·시간은 이 열에서 읽는다.
+
+작업 `competencies`와 자료 `covers`에는 같은 역량 ID를 사용한다. 예를 들어 프로젝트의 `C14 검색 파이프라인 설계 및 개발`과 교육자료의 `C14 검색 파이프라인 설계 및 개발: 일부`가 대응한다. `sources`, `summary`, `quote`를 채우면 활동 옆에 근거가 나온다. 형식이 맞아도 핵심 작업과 1순위 학습이 상한을 넘으면 배정 보류 결과가 나온다.
 
 ## 가상 예제와 JSON 입력
 

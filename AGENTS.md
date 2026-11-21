@@ -6,13 +6,13 @@
 
 1. Python 3.10 이상과 AWS CLI v2를 준비한다. AWS 인증과 지정한 Bedrock 모델 실행 권한을 확인한다.
 2. 사용자가 제공한 프로젝트 CSV와 교육자료 CSV의 전체 경로를 받는다. 사람이 작성한 CSV와 이전 응답 파일은 입력으로 취급한다.
-3. 아래 명령에 실제 값을 넣는다. `--project-hour-divisor 2`는 원본 구현시간을 절반으로 해 달라는 요청이 있을 때 사용한다. 소형은 7시간, 중형은 14시간, 대형은 28시간이며 `--hours-per-week`로 직접 입력할 수 있다.
+3. 아래 명령에 실제 값을 넣는다. 프로젝트 구현시간은 CSV의 `hours`를 기본으로 사용한다. 사용자가 시간 환산을 명시한 경우에만 선택 옵션을 적용한다. 소형은 7시간, 중형은 14시간, 대형은 28시간이며 `--hours-per-week`로 직접 입력할 수 있다.
 
 ```sh
 python3 scheduled_csv.py \
   --project-csv "/absolute/path/프로젝트_응용.csv" \
   --materials-csv "/absolute/path/주차별_교육자료_배치.csv" \
-  --project-hour-divisor 2 --size 대형 --weeks 12 \
+  --size 대형 --weeks 12 \
   --bedrock-model global.anthropic.claude-sonnet-4-6 \
   --region ap-northeast-2 --output-dir result-large
 ```
