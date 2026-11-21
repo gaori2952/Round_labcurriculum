@@ -122,7 +122,7 @@ Bedrock을 쓰려면 AWS CLI v2, Converse 도구 호출을 지원하는 모델�
 | 응용 프로젝트 CSV | `title, package, name, do, out, hours, core, goal`. `core`는 `핵심` 또는 `남으면`. |
 | 주차별 교육자료 CSV | `id, title, url, topic`. `topic` 예시 `1주차 · W1 · 1순위 · 배정 20분`. `summary`와 `covers`가 있으면 모델에 근거로 전달한다. |
 
-프로젝트 CSV의 `competencies`는 작업별 목표 역량이다. 교육자료 CSV의 `covers`는 자료가 다루는 역량과 원본의 `있음`·`일부` 범위를 나타낸다. 값이 있으면 배정된 작업과 자료의 역량을 두 섹션에 표시하고 JSON 활동에도 기록한다.
+프로젝트 CSV의 `competencies`는 작업별 목표 역량이다. 교육자료 CSV의 `covers`는 자료가 다루는 역량과 원본의 `있음`·`일부` 범위를 나타낸다. 값이 있으면 주차별 활동 아래에 역량 ID를 표시하고, 문서 끝에 작업·자료별 전체 역량명을 정리한다. 프로젝트의 `sources`와 교육자료의 `summary`·`quote`는 활동 아래에 근거로 표시하고 JSON 활동에도 기록한다.
 
 ```sh
 python3 scheduled_csv.py \

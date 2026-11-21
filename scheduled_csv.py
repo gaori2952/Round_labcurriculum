@@ -8,7 +8,8 @@ import re
 import sys
 
 from curriculum_generator import SIZE_HOURS, SLOT_MINUTES, display_minutes, to_minutes
-from lesson_analysis import competency_lines, export_blocked_markdown, export_markdown, invoke, weekly_guides
+from lesson_analysis import (activity_evidence_lines, competency_lines, export_blocked_markdown,
+                             export_markdown, invoke, weekly_guides)
 from team_csv import read_rows
 
 
@@ -24,7 +25,7 @@ def read_inputs(project_path, materials_path, divisor, weeks):
         tasks.append({"repeat_weeks": int(repeated[1]) if repeated else 0,
                       "id": row["package"], "title": row["name"], "do": row["do"],
                       "out": row["out"], "core": row["core"] == "핵심",
-                      "competencies": row.get("competencies", ""),
+                      "competencies": row.get("competencies", ""), "source_evidence": row.get("sources", ""),
                       "minutes": to_minutes(Decimal(row["hours"]) / divisor, row["package"], 60)})
     if len({t["id"] for t in tasks}) != len(tasks) or not any(t["core"] for t in tasks):
         raise ValueError("작업 ID는 고유해야 하며 핵심 작업이 하나 이상 필요합니다")
@@ -69,6 +70,7 @@ def recurring_activities(tasks):
             activity = {"kind": "project", "id": task["id"], "title": task["title"],
                         "do": task["do"], "out": task["out"], "minutes": minutes,
                         "competencies": task.get("competencies", ""),
+                        "source_evidence": task.get("source_evidence", ""),
                         "recurring": True, "completed_in_this_chunk": index + 1 == min(span, task["minutes"] // SLOT_MINUTES)}
             by_week.setdefault(index + 1, []).append(activity)
     return by_week
@@ -131,7 +133,7 @@ def place(tasks, materials, cap, weeks):
     schedule = []
     for week in range(1, weeks + 1):
         activities = [{"kind": "learning", "id": m["id"], "title": m["title"], "url": m["url"],
-                       "minutes": m["minutes"], "context": m.get("summary", ""), "covers": m.get("covers", "")}
+                       "minutes": m["minutes"], "context": m.get("summary", ""), "covers": m.get("covers", ""), "quote": m.get("quote", "")}
                       for m in materials if m["week"] == week]
         available = cap - counts[week] - recurring_minutes.get(week, 0)
         future = sum(cap - counts[w] - recurring_minutes.get(w, 0) for w in range(week + 1, weeks + 1))
@@ -147,7 +149,7 @@ def place(tasks, materials, cap, weeks):
             complete = progress == task["minutes"]
             activities.append({"kind": "project", "id": task["id"], "title": task["title"], "do": task["do"],
                                "out": task["out"], "minutes": step, "completed_in_this_chunk": complete,
-                               "competencies": task.get("competencies", "")})
+                               "competencies": task.get("competencies", ""), "source_evidence": task.get("source_evidence", "")})
             if complete:
                 task_index += 1
                 progress = 0
@@ -260,6 +262,7 @@ def main(argv=None):
                 lines.extend(week["guide"][k] for k in ("goal", "method", "reason"))
             for activity in week["activities"]:
                 lines.append(f"- {activity['id']} · {activity['title']} · {display_minutes(activity['minutes'])}")
+                lines.extend(activity_evidence_lines(activity))
             lines.append("")
         lines.extend(competency_lines(weeks))
         (out / "curriculum.md").write_text("\n".join(lines) + "\n", encoding="utf-8")

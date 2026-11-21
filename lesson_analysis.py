@@ -2,6 +2,7 @@
 from dataclasses import asdict, replace
 import json
 from pathlib import Path
+import re
 import subprocess
 from tempfile import TemporaryDirectory
 
@@ -146,6 +147,29 @@ def weekly_guides(weeks, model, profile, region):
         w["guide"] = {"origin": "llm", **{k: row[k] for k in ("goal", "method", "reason")}}
 
 
+def activity_evidence_lines(activity):
+    """Display the CSV competency mapping and source rationale beside an activity."""
+    is_learning = activity["kind"] == "learning"
+    field = "covers" if is_learning else "competencies"
+    value = activity.get(field)
+    if not isinstance(value, str):
+        return []
+    line_value = " ".join(value.split())
+    matches = re.findall(r"(?:^|;)\s*(C\d+)\b([^;]*)", line_value)
+    codes = ", ".join(cid + (" (일부)" if text.strip().endswith(": 일부") else "")
+                      for cid, text in matches) or line_value
+    label = "다루는 역량" if is_learning else "목표 역량"
+    lines = [f"  - {label} · {codes}"] if codes else []
+    reference = activity.get("context" if is_learning else "source_evidence", "")
+    if reference:
+        label = "배정 근거" if is_learning else "작업 근거"
+        lines.append(f"  - {label} · {' '.join(reference.split())}")
+    quote = activity.get("quote", "")
+    if is_learning and quote and quote != reference and not quote.startswith("배치 문서의 활용 근거 요약"):
+        lines.append(f"  - 자료 근거 · {' '.join(quote.split())}")
+    return lines
+
+
 def competency_lines(weeks):
     """Show the two CSV mappings for scheduled activities, once per item."""
     sections = []
@@ -202,6 +226,7 @@ def export_markdown(result, output, model, profile, region, display_minutes):
                 if activity["completed_in_this_chunk"]:
                     deliverable = " ".join(activity["out"].split())
                     lines.append(f"  - 산출물 · {deliverable}")
+            lines.extend(activity_evidence_lines(activity))
     lines.extend(competency_lines(result["weeks"]))
     payload = {
         "template": "\n".join(lines),

@@ -17,12 +17,12 @@ class ScheduledCSVTests(unittest.TestCase):
             out = root / "result"
             with projects.open("w", encoding="utf-8", newline="") as stream:
                 writer = csv.writer(stream)
-                writer.writerow(["title", "package", "name", "do", "out", "hours", "core", "goal", "competencies"])
-                writer.writerow(["사례", "W1", "구현", "기능 구현", "산출물", 52, "핵심", "기능", "C01 기능 설계"])
+                writer.writerow(["title", "package", "name", "do", "out", "hours", "core", "goal", "competencies", "sources"])
+                writer.writerow(["사례", "W1", "구현", "기능 구현", "산출물", 52, "핵심", "기능", "C01 기능 설계", "기능 설계 사례 → C01"])
             with materials.open("w", encoding="utf-8", newline="") as stream:
                 writer = csv.writer(stream)
                 writer.writerow(["id", "title", "url", "topic", "summary", "covers"])
-                writer.writerow(["A", "핵심", "https://example.com/a", "1주차 · W1 · 1순위 · 배정 1시간", "", "C01 기능 설계: 일부"])
+                writer.writerow(["A", "핵심", "https://example.com/a", "1주차 · W1 · 1순위 · 배정 1시간", "설계 문서 작성에 참고", "C01 기능 설계: 일부"])
                 writer.writerow(["B", "긴 참고", "https://example.com/b", "1주차 · W1 · 2순위 · 배정 1시간 10분", "", ""])
                 writer.writerow(["C", "짧은 참고", "https://example.com/c", "1주차 · W1 · 2순위 · 배정 40분", "", ""])
             history = []
@@ -60,6 +60,8 @@ class ScheduledCSVTests(unittest.TestCase):
             document = (out/"curriculum.md").read_text()
             self.assertIn("## 프로젝트 작업별 목표 역량", document)
             self.assertIn("C01 기능 설계: 일부", document)
+            self.assertIn("작업 근거 · 기능 설계 사례 → C01", document)
+            self.assertIn("배정 근거 · 설계 문서 작성에 참고", document)
 
 
 
