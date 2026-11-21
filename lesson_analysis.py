@@ -227,7 +227,8 @@ def export_markdown(result, output, model, profile, region, display_minutes):
                     deliverable = " ".join(activity["out"].split())
                     lines.append(f"  - 산출물 · {deliverable}")
             lines.extend(activity_evidence_lines(activity))
-    lines.extend(competency_lines(result["weeks"]))
+    competency_sections = competency_lines(result["weeks"])
+    lines.extend(competency_sections)
     payload = {
         "template": "\n".join(lines),
         "weeks": [{"week": w["week"], "guide": w.get("guide"), "goals": w["goals"]}
@@ -241,7 +242,8 @@ def export_markdown(result, output, model, profile, region, display_minutes):
         "모든 주차에서 세 안내 칸을 실제 문장으로 채우고 {안내} 토큰이 남아 있지 않은지 확인한다. "
         "문서 밖 설명과 코드 펜스는 쓰지 않는다."
     )
-    write_markdown_response(payload, lines, instruction, 12000, output, model, profile, region)
+    max_tokens = 22000 if competency_sections else 12000
+    write_markdown_response(payload, lines, instruction, max_tokens, output, model, profile, region)
 
 
 def export_blocked_markdown(result, output, model, profile, region, display_minutes):
