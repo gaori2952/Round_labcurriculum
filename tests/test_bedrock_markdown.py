@@ -72,3 +72,25 @@ class BedrockMarkdownTests(unittest.TestCase):
             self.assertEqual((out / "bedrock_markdown_response_attempt_1.json").read_bytes(), first)
             self.assertEqual((out / "bedrock_markdown_response.json").read_bytes(), second)
             self.assertEqual((out / "curriculum_bedrock.md").read_bytes(), complete.encode())
+
+    def test_equivalent_link_syntax_keeps_bedrock_markdown_verbatim(self):
+        from lesson_analysis import write_markdown_response
+
+        expected = "- 학습 15분 · [자료](<https://example.org/reference>)"
+        for changed_url in (False, True):
+            with self.subTest(changed_url=changed_url), TemporaryDirectory() as directory:
+                out = Path(directory)
+                supplied = expected.replace("<", "").replace(">", "")
+                if changed_url:
+                    supplied = supplied.replace("/reference", "/different")
+                raw = json.dumps({"stopReason":"end_turn",
+                                  "output":{"message":{"content":[{"text":supplied}]}}}).encode()
+                with patch("lesson_analysis.converse", return_value=raw):
+                    args = ({}, [expected], "안내", 200, out, "mock", None, None)
+                    if changed_url:
+                        with self.assertRaises(ValueError):
+                            write_markdown_response(*args)
+                        self.assertFalse((out/"curriculum_bedrock.md").exists())
+                    else:
+                        write_markdown_response(*args)
+                        self.assertEqual((out/"curriculum_bedrock.md").read_bytes(),supplied.encode())

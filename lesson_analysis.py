@@ -311,6 +311,9 @@ def write_markdown_response(payload, lines, instruction, max_tokens, output, mod
             valid = line.startswith(prefix) and bool(line[len(prefix):].strip())
         else:
             valid = original == line
+            if not valid and original.startswith("- 학습 "):
+                # Markdown permits an unwrapped destination when it contains no spaces or parentheses.
+                valid = re.sub(r"\]\(<([^\s()<>\\]+)>\)$", r"](\1)", original) == line
         if not valid:
             raise ValueError("Bedrock Markdown에 확정 일정과 다른 내용이 있습니다")
     (output / "curriculum_bedrock.md").write_bytes(markdown.encode("utf-8"))
