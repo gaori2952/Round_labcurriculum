@@ -1,0 +1,10 @@
+# Generated curriculum artifacts
+curriculum.json
+curriculum.md
+curriculum_bedrock.md
+bedrock_markdown_response*.json
+bedrock_material_selection_attempt_*.json
+budget_validation_attempt_*.json
+# Synthetic output examples documented in the README
+!examples/output/curriculum.json
+!examples/output/curriculum.md

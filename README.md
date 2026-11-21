@@ -27,12 +27,11 @@ python3 curriculum_generator.py --size 중형 --output-dir result
 
 한 번 실행할 때 `--size 소형`, `--size 중형`, `--size 대형` 중 하나를 지정한다. 주당 시간을 직접 입력하려면 `--hours-per-week`를 사용한다. 핵심 작업과 학습이 예산을 넘으면 부족한 시간과 주당 필요한 최소 시간을 결과에 적는다.
 
-### 주 7시간 결과 예시
+### 가용시간과 배정시간
 
-| 실행 | 교육자료 | 총 배정시간 | 결과 |
-|---|---:|---:|---|
-| 기본 | 4개 | 77시간 30분 | [Markdown](team_results/curriculum.md) · [JSON](team_results/curriculum.json) |
-| 보조자료 2개 추가 | 6개 | 80시간 30분 | [Markdown](team_results/with_supplemental_references/curriculum.md) · [JSON](team_results/with_supplemental_references/curriculum.json) |
+주당 가용시간은 일정의 상한이다. 생성기는 지정한 기간에 필요한 작업과 학습을 배정하고 남은 시간은 비운다. 주 7시간, 12주, 별도 고정 주차 조건이 없는 경우에 총 80시간이면 매주 6시간 40분을 배정하고 전체 4시간이 남는다. 총 30시간이면 매주 2시간 30분을 배정하고 전체 54시간이 남는다.
+
+주차별 교육자료 CSV 경로에서는 자료의 지정 주차를 유지하고, Python이 남은 구현시간을 상한 내에서 나눈다. 구현시간만 제시된 경우에는 별도의 학습시간도 가용시간에서 사용한다.
 
 팀 CSV는 선정 근거와 관련 작업 번호를 제공한다. 생성기는 이를 바탕으로 `P01` 같은 실습 작업과 소요시간을 제안하고, `W1` 같은 번호는 원본 참조로 기록한다. 확인한 학습 구간에는 절 이름을 붙이고, 미확인 구간에는 CSV 인용문을 바탕으로 찾아볼 범위를 제안한다. 팀 CSV로 만든 결과는 `needs_review` 상태로 저장된다.
 
@@ -155,7 +154,7 @@ python3 curriculum_generator.py \
   --hours-per-week 7 --output-dir result
 ```
 
-예제의 출처·시간·학습자 정보는 가상 데이터다. [가상 예제 결과](examples/output/curriculum.md)
+예제의 출처·시간·학습자 정보는 가상 데이터다. [출력 형식 참고용 Markdown](examples/output/curriculum.md)
 
 <details>
 <summary>JSON 입력 필드</summary>
