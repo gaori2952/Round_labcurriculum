@@ -51,7 +51,7 @@ def invoke(records, schema, instruction, tool, model, profile, region):
 
 
 def converse(request, profile, region):
-    cmd = ["aws", "bedrock-runtime", "converse", "--output", "json", "--no-cli-pager"]
+    cmd = ["aws", "bedrock-runtime", "converse", "--output", "json", "--no-cli-pager", "--cli-read-timeout", "170"]
     if profile:
         cmd.extend(["--profile", profile])
     if region:

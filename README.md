@@ -113,6 +113,28 @@ Bedrock을 쓰려면 AWS CLI v2, Converse 도구 호출을 지원하는 모델�
 
 `--weeks`로 계획 기간을 바꿀 수 있다. `--strict`를 쓰면 검토가 필요한 계획을 보류한다. 실제 소요시간과 학습 효과는 실측으로 확인해야 한다.
 
+## 응용 프로젝트 CSV와 주차별 교육자료 CSV
+
+`scheduled_csv.py`는 응용 프로젝트의 작업과 주차별로 배치된 교육자료를 직접 읽는다. GitHub를 내려받은 뒤 Python 3.10 이상, AWS CLI v2, Bedrock 호출 권한과 아래 두 입력 파일을 준비한다. 코드 실행에 사용할 AWS 프로필은 환경마다 다를 수 있으므로 필요할 때만 `--profile`을 추가한다.
+
+| 입력 | 필요한 열 |
+|---|---|
+| 응용 프로젝트 CSV | `title, package, name, do, out, hours, core, goal`. `core`는 `핵심` 또는 `남으면`. |
+| 주차별 교육자료 CSV | `id, title, url, topic`. `topic` 예시 `1주차 · W1 · 1순위 · 배정 20분`. `summary`와 `covers`가 있으면 모델에 근거로 전달한다. |
+
+```sh
+python3 scheduled_csv.py \
+  --project-csv "/absolute/path/프로젝트_응용.csv" \
+  --materials-csv "/absolute/path/주차별_교육자료_배치.csv" \
+  --project-hour-divisor 2 --size 대형 --weeks 12 \
+  --bedrock-model global.anthropic.claude-sonnet-4-6 \
+  --region ap-northeast-2 --output-dir result-large
+```
+
+이 예는 프로젝트 시간을 절반으로 환산하고 주당 28시간을 상한으로 사용한다. Python은 핵심 작업과 1순위 교육자료를 우선 확보한다. Bedrock은 남는 학습 예산에서 2순위 자료를 선택한다. 첫 응답이 예산을 넘기거나 보고한 합계가 실제 합계와 다르면 프로그램이 이전 응답과 검증 결과를 보내 자동으로 1회 재입력한다. 다시 검증을 통과하지 못하면 보류 사유를 저장한다. 유효한 선택은 Python이 주차별로 배정하고 Bedrock이 최종 공유용 Markdown을 작성한다.
+
+다른 LLM 도구나 자동화 환경에서의 실행 순서와 파일 반환 규칙은 [AGENTS.md](AGENTS.md)에 정리했다. 동일한 규칙으로 시간표를 검증하며, Bedrock의 자료 선택과 안내 문장은 모델·실행에 따라 달라질 수 있다.
+
 ## 가상 예제와 JSON 입력
 
 ```sh
