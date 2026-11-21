@@ -17,12 +17,12 @@ class ScheduledCSVTests(unittest.TestCase):
             out = root / "result"
             with projects.open("w", encoding="utf-8", newline="") as stream:
                 writer = csv.writer(stream)
-                writer.writerow(["title", "package", "name", "do", "out", "hours", "core", "goal"])
-                writer.writerow(["사례", "W1", "구현", "기능 구현", "산출물", 52, "핵심", "기능"])
+                writer.writerow(["title", "package", "name", "do", "out", "hours", "core", "goal", "competencies"])
+                writer.writerow(["사례", "W1", "구현", "기능 구현", "산출물", 52, "핵심", "기능", "C01 기능 설계"])
             with materials.open("w", encoding="utf-8", newline="") as stream:
                 writer = csv.writer(stream)
                 writer.writerow(["id", "title", "url", "topic", "summary", "covers"])
-                writer.writerow(["A", "핵심", "https://example.com/a", "1주차 · W1 · 1순위 · 배정 1시간", "", ""])
+                writer.writerow(["A", "핵심", "https://example.com/a", "1주차 · W1 · 1순위 · 배정 1시간", "", "C01 기능 설계: 일부"])
                 writer.writerow(["B", "긴 참고", "https://example.com/b", "1주차 · W1 · 2순위 · 배정 1시간 10분", "", ""])
                 writer.writerow(["C", "짧은 참고", "https://example.com/c", "1주차 · W1 · 2순위 · 배정 40분", "", ""])
             history = []
@@ -54,6 +54,13 @@ class ScheduledCSVTests(unittest.TestCase):
             self.assertEqual(result["weeks"][0]["capacity_minutes"],1680)
             self.assertEqual(result["weeks"][0]["used_minutes"],1660)
             self.assertEqual(result["summary"]["scheduled_material_ids"],["A","C"])
+            activities = result["weeks"][0]["activities"]
+            self.assertEqual(activities[0]["covers"], "C01 기능 설계: 일부")
+            self.assertEqual(activities[-1]["competencies"], "C01 기능 설계")
+            document = (out/"curriculum.md").read_text()
+            self.assertIn("## 프로젝트 작업별 목표 역량", document)
+            self.assertIn("C01 기능 설계: 일부", document)
+
 
 
     def test_explicit_parallel_work_remains_in_each_week(self):

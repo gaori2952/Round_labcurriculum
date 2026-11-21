@@ -146,6 +146,28 @@ def weekly_guides(weeks, model, profile, region):
         w["guide"] = {"origin": "llm", **{k: row[k] for k in ("goal", "method", "reason")}}
 
 
+def competency_lines(weeks):
+    """Show the two CSV mappings for scheduled activities, once per item."""
+    sections = []
+    for kind, field, header in (
+        ("project", "competencies", "프로젝트 작업별 목표 역량"),
+        ("learning", "covers", "교육자료별 다루는 역량"),
+    ):
+        items = {}
+        for week in weeks:
+            for activity in week["activities"]:
+                value = activity.get(field)
+                if activity["kind"] != kind or not isinstance(value, str) or not value.strip():
+                    continue
+                name = " ".join(activity["title"].split())
+                if kind == "project":
+                    name = f"{activity['id']} {name}"
+                items[activity["id"]] = f"- {name} · {' '.join(value.split())}"
+        if items:
+            sections.extend(["", f"## {header}", "", *items.values()])
+    return sections
+
+
 def export_markdown(result, output, model, profile, region, display_minutes):
     """Produce a shareable Markdown document and verify it against the saved schedule."""
     summary = result["summary"]
@@ -180,6 +202,7 @@ def export_markdown(result, output, model, profile, region, display_minutes):
                 if activity["completed_in_this_chunk"]:
                     deliverable = " ".join(activity["out"].split())
                     lines.append(f"  - 산출물 · {deliverable}")
+    lines.extend(competency_lines(result["weeks"]))
     payload = {
         "template": "\n".join(lines),
         "weeks": [{"week": w["week"], "guide": w.get("guide"), "goals": w["goals"]}
@@ -188,9 +211,10 @@ def export_markdown(result, output, model, profile, region, display_minutes):
     instruction = (
         "template 전체를 한국어 Markdown 문서로 반환한다. {안내} 표시만 "
         "해당 주차의 guide와 goals에 근거한 한 줄짜리 안내 문장으로 바꾼다. "
-        "제목, 활동, 산출물, 링크, 시간, 보류 목록은 그대로 복사한다. "
+        "제목, 활동, 산출물, 링크, 시간, 보류 목록, 마지막의 역량 목록은 그대로 복사한다. "
         "안내에 새 작업·자료·링크·시간을 넣거나 보류 작업을 배정되었다고 쓰지 않는다. "
-        "모든 주차에서 세 안내 칸을 실제 문장으로 채우고 {안내} 토큰이 남아 있지 않은지 확인한다. "        "문서 밖 설명과 코드 펜스는 쓰지 않는다."
+        "모든 주차에서 세 안내 칸을 실제 문장으로 채우고 {안내} 토큰이 남아 있지 않은지 확인한다. "
+        "문서 밖 설명과 코드 펜스는 쓰지 않는다."
     )
     write_markdown_response(payload, lines, instruction, 12000, output, model, profile, region)
 
